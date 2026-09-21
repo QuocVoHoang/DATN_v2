@@ -60,7 +60,7 @@ scope.onmessage = async (event: MessageEvent<WorkerRequest>) => {
     const analysisStarted = performance.now();
     const analysis = detectMovingObjects({ width: request.width, height: request.height, data: mask }, request.roi, request.minArea, objectWorkspace);
     const analysisMs = performance.now() - analysisStarted;
-    const response: WorkerResponse = { type: 'result', requestId: request.requestId, objects: analysis.objects, changedPixelsInRoi: analysis.changedPixelsInRoi, engineMs, captureMs, analysisMs };
+    const response: WorkerResponse = { type: 'result', requestId: request.requestId, objects: analysis.objects, changedPixelsInRoi: analysis.changedPixelsInRoi, validMotionPixelsInRoi: analysis.validMotionPixelsInRoi, engineMs, captureMs, analysisMs };
     scope.postMessage(response);
   } catch (error) {
     request.bitmap.close();

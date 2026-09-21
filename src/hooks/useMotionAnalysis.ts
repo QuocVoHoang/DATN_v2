@@ -2,18 +2,23 @@ import { useEffect, useRef, useState } from 'react';
 import { configureWasmThreads, processWithWasm, resetWasm } from '../engine/wasmMotion';
 import { clampRoi, type ROI } from '../features/roi';
 import { MotionEventTracker, type MotionEvent } from '../features/motionEvents';
-import { createMovingObjectWorkspace, detectMovingObjects, type MovingObject } from '../features/movingObjects';
+import { createMovingObjectWorkspace, detectMovingObjects, mergeMovingObjects, type MovingObject } from '../features/movingObjects';
 import { LatencySamples } from '../features/latencySamples';
 import { getProcessingSize, resolutionPresets, type ResolutionPreset } from '../features/processingResolution';
 import { createEventCsv, createEventJson, downloadTextFile } from '../features/eventExport';
 import { chooseFastestThread, threadCandidates, type ThreadMode } from '../features/autoThread';
 import { createMotionWorker } from '../engine/motionWorkerClient';
+import { ObjectTracker } from '../features/objectTracking';
 
 const defaultRoi: ROI = { x: 0.2, y: 0.2, width: 0.6, height: 0.6 };
 const minThreshold = 1;
 const maxThreshold = 255;
 const maxLatencySamples = 180;
-const minObjectArea = 40;
+  // Keep this small enough for thin motion contours at 1080p. The event
+  // threshold below still prevents isolated noise from becoming an alert.
+  const minObjectAreaRatio = 24 / (1920 * 1080);
+  const eventStartRatio = 0.005;
+  const eventContinueRatio = 0.002;
 const frameBudgetMs = 33.3;
 const adaptiveAlpha = 1.1;
 const adaptiveBeta = 0.8;
@@ -59,13 +64,14 @@ export function useMotionAnalysis() {
   const lastAnalyzedVideoTimeRef = useRef<number | null>(null);
   const tracker = useRef(new MotionEventTracker());
   const objectWorkspace = useRef(createMovingObjectWorkspace());
+  const objectTracker = useRef(new ObjectTracker());
   const latencySamples = useRef(new LatencySamples(maxLatencySamples));
   const motionWorkerRef = useRef<ReturnType<typeof createMotionWorker> | null>(null);
 
   const [status, setStatus] = useState('No video selected');
   const [sourceReady, setSourceReady] = useState(false);
   const [running, setRunning] = useState(false);
-  const [threshold, setThreshold] = useState(30);
+  const [threshold, setThreshold] = useState(20);
   const [resolutionPreset, setResolutionPreset] = useState<ResolutionPreset>('1080p');
   const resolutionPresetRef = useRef(resolutionPreset);
   const [processingSize, setProcessingSize] = useState({ width: 0, height: 0 });
@@ -217,6 +223,7 @@ export function useMotionAnalysis() {
     tracker.current.reset();
     setEvents([]);
     setMovingObjects([]);
+    objectTracker.current.reset();
     setProcessingSize({ width: 0, height: 0 });
     setMotion(0);
     setFps(0);
@@ -361,6 +368,7 @@ export function useMotionAnalysis() {
           return;
         }
         const frameStarted = performance.now();
+        const minObjectArea = Math.max(4, Math.round(minObjectAreaRatio * source.width * source.height));
         let nextWasmLatency: number;
         let ratio: number;
         let frameObjects: MovingObject[];
@@ -371,7 +379,7 @@ export function useMotionAnalysis() {
           nextWasmLatency = workerResult.engineMs ?? 0;
           frameObjects = (workerResult.objects ?? []).map((object) => ({ ...object, meanIntensity: 255, maxIntensity: 255 }));
           const roiPixels = Math.max(1, roiRef.current.width * roiRef.current.height * source.width * source.height);
-          ratio = (workerResult.changedPixelsInRoi ?? 0) / roiPixels;
+           ratio = (workerResult.validMotionPixelsInRoi ?? 0) / roiPixels;
         } else {
           ctx.drawImage(video, 0, 0, source.width, source.height);
           const image = ctx.getImageData(0, 0, source.width, source.height);
@@ -381,19 +389,22 @@ export function useMotionAnalysis() {
           const analysis = detectMovingObjects(result.mask, currentRoi, minObjectArea, objectWorkspace.current);
           frameObjects = analysis.objects;
           const roiPixels = Math.max(1, currentRoi.width * currentRoi.height * image.width * image.height);
-          ratio = analysis.changedPixelsInRoi / roiPixels;
+           ratio = analysis.validMotionPixelsInRoi / roiPixels;
         }
        if (!runningRef.current || runId !== runIdRef.current) return;
        lastAnalyzedVideoTimeRef.current = videoTime;
 
        // Normalize detected pixels against selected ROI area.
+       frameObjects = objectTracker.current.update(mergeMovingObjects(frameObjects));
        setMovingObjects(frameObjects);
       const nextEndToEndLatency = performance.now() - frameStarted;
        latencySamples.current.add(nextEndToEndLatency);
-       const event = tracker.current.update(videoTime, ratio, 0.02, nextWasmLatency, nextEndToEndLatency);
+        const update = tracker.current.update(videoTime, ratio, eventStartRatio, nextWasmLatency, nextEndToEndLatency, eventContinueRatio);
 
-      // Tracker turns continuous motion into discrete timeline events.
-      if (event) setEvents((current) => [event, ...current]);
+       // Tracker turns continuous motion into discrete timeline events.
+       if (update) setEvents((current) => update.kind === 'started'
+         ? [update.event, ...current]
+         : current.map((item) => item.id === update.event.id ? update.event : item));
 
        dashboardRef.current.motion = Math.round(ratio * 10000) / 100;
        dashboardRef.current.wasmLatency = Math.round(nextWasmLatency * 100) / 100;
@@ -467,6 +478,8 @@ export function useMotionAnalysis() {
   }
 
   function stop() {
+    const update = tracker.current.finish();
+    if (update) setEvents((current) => current.map((item) => item.id === update.event.id ? update.event : item));
     stopAnalysis('Stopped');
   }
 

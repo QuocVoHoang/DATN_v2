@@ -22,6 +22,7 @@ export type WorkerResponse = {
   mediaTime?: number;
   objects?: WorkerObject[];
   changedPixelsInRoi?: number;
+  validMotionPixelsInRoi?: number;
   engineMs?: number;
   captureMs?: number;
   analysisMs?: number;

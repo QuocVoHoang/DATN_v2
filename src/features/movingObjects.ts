@@ -11,7 +11,39 @@ export type MovingObject = {
 };
 
 export type MovingObjectWorkspace = { visited: Uint8Array; stack: Int32Array; capacity: number };
-export type MovingObjectAnalysis = { objects: MovingObject[]; changedPixelsInRoi: number };
+export type MovingObjectAnalysis = { objects: MovingObject[]; changedPixelsInRoi: number; validMotionPixelsInRoi: number };
+
+/** Merge nearby motion components before tracking so one moving subject does not
+ * appear as a collection of flickering boxes. Coordinates are normalized. */
+export function mergeMovingObjects(objects: MovingObject[], gap = 0.025): MovingObject[] {
+  const pending = objects.map((object) => ({ ...object }));
+  const merged: MovingObject[] = [];
+  const touches = (a: MovingObject, b: MovingObject) =>
+    a.bbox.x <= b.bbox.x + b.bbox.width + gap &&
+    b.bbox.x <= a.bbox.x + a.bbox.width + gap &&
+    a.bbox.y <= b.bbox.y + b.bbox.height + gap &&
+    b.bbox.y <= a.bbox.y + a.bbox.height + gap;
+  while (pending.length) {
+    let group = pending.splice(0, 1)[0];
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (let index = pending.length - 1; index >= 0; index--) {
+        if (!touches(group, pending[index])) continue;
+        const next = pending.splice(index, 1)[0];
+        const left = Math.min(group.bbox.x, next.bbox.x);
+        const top = Math.min(group.bbox.y, next.bbox.y);
+        const right = Math.max(group.bbox.x + group.bbox.width, next.bbox.x + next.bbox.width);
+        const bottom = Math.max(group.bbox.y + group.bbox.height, next.bbox.y + next.bbox.height);
+        const area = group.area + next.area;
+        group = { ...group, bbox: { x: left, y: top, width: right - left, height: bottom - top }, centroid: { x: (group.centroid.x * group.area + next.centroid.x * next.area) / area, y: (group.centroid.y * group.area + next.centroid.y * next.area) / area }, area, meanIntensity: (group.meanIntensity * group.area + next.meanIntensity * next.area) / area, maxIntensity: Math.max(group.maxIntensity, next.maxIntensity) };
+        changed = true;
+      }
+    }
+    merged.push(group);
+  }
+  return merged.map((object, index) => ({ ...object, id: index + 1 }));
+}
 export function createMovingObjectWorkspace(): MovingObjectWorkspace { return { visited: new Uint8Array(0), stack: new Int32Array(0), capacity: 0 }; }
 
 export function detectMovingObjects(mask: MotionMask, roi: ROI, minArea: number, workspace: MovingObjectWorkspace): MovingObjectAnalysis {
@@ -30,6 +62,7 @@ export function detectMovingObjects(mask: MotionMask, roi: ROI, minArea: number,
   const { visited, stack } = workspace;
   const objects: MovingObject[] = [];
   let changedPixelsInRoi = 0;
+  let validMotionPixelsInRoi = 0;
 
   for (let y = y0; y < y1; y++) {
     for (let x = x0; x < x1; x++) {
@@ -72,7 +105,8 @@ export function detectMovingObjects(mask: MotionMask, roi: ROI, minArea: number,
        }
 
        changedPixelsInRoi += area;
-      if (area < minArea) continue;
+       if (area < minArea) continue;
+       validMotionPixelsInRoi += area;
       objects.push({
         id: objects.length + 1,
         bbox: { x: minX / width, y: minY / height, width: (maxX - minX + 1) / width, height: (maxY - minY + 1) / height },
@@ -84,5 +118,5 @@ export function detectMovingObjects(mask: MotionMask, roi: ROI, minArea: number,
     }
   }
 
-  return { objects, changedPixelsInRoi };
+  return { objects, changedPixelsInRoi, validMotionPixelsInRoi };
 }
