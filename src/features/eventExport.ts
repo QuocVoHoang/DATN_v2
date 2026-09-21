@@ -1,0 +1,11 @@
+import type { MotionEvent } from './motionEvents';
+export type ExportEvent = MotionEvent & { id: number; start: number; end: number; duration: number; bbox: { x: number; y: number; width: number; height: number }; centroid: { x: number; y: number }; area: number; roiId: string; trackId: number; meanIntensity: number; maxIntensity: number };
+
+export type EventExportDocument = { schemaVersion: 1; exportedAt: string; eventCount: number; events: ExportEvent[] };
+const columns = ['id','start','end','duration','bbox_x','bbox_y','bbox_width','bbox_height','centroid_x','centroid_y','area','peak_ratio','roi_id','track_id','mean_intensity','max_intensity','peak_wasm_latency_ms','peak_end_to_end_latency_ms'] as const;
+const normalize = (event: MotionEvent, index: number): ExportEvent => ({ ...event, id: index + 1, start: event.startedAt, end: event.endedAt, duration: event.endedAt - event.startedAt, bbox: { x: 0, y: 0, width: 0, height: 0 }, centroid: { x: 0, y: 0 }, area: 0, roiId: 'roi-main', trackId: index + 1, meanIntensity: event.peakRatio * 255, maxIntensity: event.peakRatio * 255 });
+const ordered = (events: MotionEvent[]) => events.map(normalize).sort((a, b) => a.start - b.start);
+export function createEventJson(events: MotionEvent[], exportedAt = new Date().toISOString()) { return `${JSON.stringify({ schemaVersion: 1, exportedAt, eventCount: events.length, events: ordered(events) }, null, 2)}\n`; }
+function cell(value: string | number) { const text = String(value); return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text; }
+export function createEventCsv(events: MotionEvent[]) { const rows = [columns.join(',')]; for (const e of ordered(events)) rows.push([e.id,e.start,e.end,e.duration,e.bbox.x,e.bbox.y,e.bbox.width,e.bbox.height,e.centroid.x,e.centroid.y,e.area,e.peakRatio,e.roiId,e.trackId,e.meanIntensity,e.maxIntensity,e.peakWasmLatency,e.peakEndToEndLatency].map(cell).join(',')); return `${rows.join('\r\n')}\r\n`; }
+export function downloadTextFile(content: string, filename: string, mimeType: string) { const url = URL.createObjectURL(new Blob([content], { type: mimeType })); const anchor = document.createElement('a'); anchor.href = url; anchor.download = filename; document.body.appendChild(anchor); anchor.click(); anchor.remove(); URL.revokeObjectURL(url); }

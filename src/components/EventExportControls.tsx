@@ -1,0 +1,2 @@
+type Props = { disabled: boolean; onJson: () => void; onCsv: () => void };
+export function EventExportControls({ disabled, onJson, onCsv }: Props) { const className = 'cursor-pointer border border-[#70927f] px-2 py-1 text-[10px] font-semibold disabled:cursor-not-allowed disabled:opacity-35'; return <div className="ml-auto flex gap-2 max-[400px]:ml-0"><button className={className} disabled={disabled} onClick={onJson}>JSON</button><button className={className} disabled={disabled} onClick={onCsv}>CSV</button></div>; }
