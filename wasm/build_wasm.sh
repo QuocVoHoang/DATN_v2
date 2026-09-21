@@ -37,4 +37,5 @@ echo "Build done: public/wasm/motion_wasm.js and public/wasm/motion_wasm.wasm"
   -O3 -msimd128 -s WASM=1 -s ALLOW_MEMORY_GROWTH=1 \
   -s EXPORTED_FUNCTIONS='["_malloc","_free","_processMotion","_resetMotionDetector","_getChangedPixelCount","_getLastMotionError","_setThreadCount","_getThreadCount"]' \
   -s EXPORTED_RUNTIME_METHODS='["HEAPU8"]' \
-  -o "$DATN_DIR/public/wasm/motion_wasm_worker.js"
+  -s MODULARIZE=1 -s EXPORT_ES6=1 \
+  -o "$DATN_DIR/public/wasm/motion_wasm_worker.mjs"

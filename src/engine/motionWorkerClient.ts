@@ -2,7 +2,7 @@ import type { ROI } from '../features/roi';
 import type { WorkerResponse } from '../features/motionWorkerProtocol';
 
 export function createMotionWorker() {
-  const worker = new Worker(new URL('../workers/motionWorker.ts', import.meta.url));
+  const worker = new Worker(new URL('../workers/motionWorker.ts', import.meta.url), { type: 'module' });
   let requestId = 0;
   return {
     worker,

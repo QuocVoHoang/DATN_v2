@@ -1,6 +1,5 @@
 import type { WorkerRequest, WorkerResponse } from '../features/motionWorkerProtocol';
-
-declare function importScripts(...urls: string[]): void;
+import { createMovingObjectWorkspace, detectMovingObjects } from '../features/movingObjects';
 
 type WorkerScope = { Module?: Partial<Wasm> & { onRuntimeInitialized?: () => void; onAbort?: (reason?: unknown) => void; locateFile?: (path: string) => string }; postMessage(message: WorkerResponse): void; onmessage: (event: MessageEvent<WorkerRequest>) => void };
 
@@ -19,44 +18,21 @@ let inputPointer = 0;
 let inputCapacity = 0;
 let canvas: OffscreenCanvas | null = null;
 let context: OffscreenCanvasRenderingContext2D | null = null;
+const objectWorkspace = createMovingObjectWorkspace();
 
 function initWasm(): Promise<Wasm> {
   if (wasmPromise) return wasmPromise;
   wasmPromise = new Promise((resolve, reject) => {
-    scope.Module = { onRuntimeInitialized: () => resolve(scope.Module as Wasm), onAbort: (reason?: unknown) => reject(new Error(String(reason ?? 'WASM aborted'))), locateFile: (path) => `/wasm/${path}` };
-    try { importScripts('/wasm/motion_wasm_worker.js'); } catch (error) { reject(error); }
+    const loadModule = new Function('url', 'return import(url)') as (url: string) => Promise<unknown>;
+    void loadModule('/wasm/motion_wasm_worker.mjs')
+      .then((module) => {
+        const factory = (module as { default?: (options?: Record<string, unknown>) => Promise<Wasm> }).default;
+        if (!factory) throw new Error('Worker WASM factory is unavailable.');
+        return factory({ locateFile: (path: string) => `/wasm/${path}` });
+      })
+      .then(resolve, reject);
   });
   return wasmPromise;
-}
-
-function detect(data: Uint8Array, width: number, height: number, roi: WorkerRequest['roi'], minArea: number) {
-  const x0 = Math.max(0, Math.floor(roi.x * width));
-  const y0 = Math.max(0, Math.floor(roi.y * height));
-  const x1 = Math.min(width, Math.ceil((roi.x + roi.width) * width));
-  const y1 = Math.min(height, Math.ceil((roi.y + roi.height) * height));
-  const visited = new Uint8Array(width * height);
-  const stack = new Int32Array(width * height);
-  const objects: WorkerResponse['objects'] = [];
-  let changedPixelsInRoi = 0;
-  for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
-    const start = y * width + x;
-    if (visited[start] || data[start * 4] === 0) continue;
-    visited[start] = 1; let top = 0; stack[top++] = start;
-    let area = 0, minX = x, maxX = x, minY = y, maxY = y, sumX = 0, sumY = 0;
-    while (top) {
-      const index = stack[--top]; const cx = index % width; const cy = Math.floor(index / width);
-      area++; sumX += cx; sumY += cy; minX = Math.min(minX, cx); maxX = Math.max(maxX, cx); minY = Math.min(minY, cy); maxY = Math.max(maxY, cy);
-      const neighbors = [index - 1, index + 1, index - width, index + width];
-      for (const next of neighbors) {
-        const nx = next % width; const ny = Math.floor(next / width);
-        if (nx < x0 || nx >= x1 || ny < y0 || ny >= y1 || visited[next] || data[next * 4] === 0) continue;
-        visited[next] = 1; stack[top++] = next;
-      }
-    }
-    changedPixelsInRoi += area;
-    if (area >= minArea) objects.push({ id: objects.length + 1, bbox: { x: minX / width, y: minY / height, width: (maxX - minX + 1) / width, height: (maxY - minY + 1) / height }, centroid: { x: sumX / area / width, y: sumY / area / height }, area });
-  }
-  return { objects, changedPixelsInRoi };
 }
 
 scope.onmessage = async (event: MessageEvent<WorkerRequest>) => {
@@ -82,7 +58,7 @@ scope.onmessage = async (event: MessageEvent<WorkerRequest>) => {
     if (!outputPointer) throw new Error(`WASM motion error ${wasm._getLastMotionError()}`);
     const mask = new Uint8Array(wasm.HEAPU8.buffer, outputPointer, image.data.length);
     const analysisStarted = performance.now();
-    const analysis = detect(mask, request.width, request.height, request.roi, request.minArea);
+    const analysis = detectMovingObjects({ width: request.width, height: request.height, data: mask }, request.roi, request.minArea, objectWorkspace);
     const analysisMs = performance.now() - analysisStarted;
     const response: WorkerResponse = { type: 'result', requestId: request.requestId, objects: analysis.objects, changedPixelsInRoi: analysis.changedPixelsInRoi, engineMs, captureMs, analysisMs };
     scope.postMessage(response);
