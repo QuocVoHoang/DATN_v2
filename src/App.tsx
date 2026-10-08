@@ -38,7 +38,7 @@ export default function App() {
 
           <TelemetryPanel
             metrics={{ fps: motion.fps, wasmLatency: motion.wasmLatency, endToEndLatency: motion.endToEndLatency, p95: motion.p95, p99: motion.p99, droppedFrames: motion.droppedFrames, motion: motion.motion }}
-            quality={{ processingSize: motion.processingSize, adaptiveEnabled: motion.adaptiveEnabled, effectiveResolutionPreset: motion.effectiveResolutionPreset }}
+             quality={{ processingSize: motion.processingSize, adaptiveEnabled: motion.adaptiveEnabled, effectiveResolutionPreset: motion.effectiveResolutionPreset, frameSamplingRate: motion.frameSamplingRate, lastAdaptiveAction: motion.lastAdaptiveAction }}
             pipeline={{ browserStatus: motion.browserStatus, runtimeStatus: motion.runtimeStatus }}
             onThreadCountChange={motion.setThreadCount}
             threadMode={motion.threadMode}

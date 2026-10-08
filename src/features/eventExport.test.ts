@@ -18,5 +18,10 @@ describe('event export', () => {
     expect(csv).toContain('roi-main');
   });
 
+  it('exports the detected object snapshot instead of placeholder geometry', () => {
+    const result = JSON.parse(createEventJson([{ ...event(1, 2), object: { bbox: { x: 0.1, y: 0.2, width: 0.3, height: 0.4 }, centroid: { x: 0.25, y: 0.4 }, area: 1234, trackId: 7, meanIntensity: 120, maxIntensity: 255 } }], '2026-08-28T00:00:00.000Z'));
+    expect(result.events[0]).toMatchObject({ area: 1234, trackId: 7, bbox: { x: 0.1, y: 0.2 }, centroid: { x: 0.25, y: 0.4 }, meanIntensity: 120, maxIntensity: 255 });
+  });
+
   it('exports header for empty CSV', () => { expect(createEventCsv([]).split('\r\n')).toHaveLength(2); });
 });

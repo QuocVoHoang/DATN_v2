@@ -1,10 +1,10 @@
 import { useRef, type PointerEvent, type RefObject } from 'react';
 import { moveRoi, resizeRoi, type ROI } from '../features/roi';
-import type { MovingObject } from '../features/movingObjects';
+import type { TrackedMovingObject } from '../features/objectTracking';
 
 type VideoStageProps = {
   media: { videoRef: RefObject<HTMLVideoElement | null>; sourceRef: RefObject<HTMLCanvasElement | null> };
-  overlay: { roi: ROI; onRoiChange: (roi: ROI) => void; movingObjects: MovingObject[] };
+  overlay: { roi: ROI; onRoiChange: (roi: ROI) => void; movingObjects: TrackedMovingObject[] };
 };
 
 export function VideoStage({ media, overlay }: VideoStageProps) {
@@ -45,7 +45,12 @@ export function VideoStage({ media, overlay }: VideoStageProps) {
   return (
     <div ref={stageRef} className="relative grid min-w-0 w-full place-items-center overflow-hidden bg-[#edf3ef]">
       <video ref={videoRef} className="block h-auto w-full" muted loop playsInline preload="metadata" />
-       {movingObjects.map((object) => <div key={object.id} className="pointer-events-none absolute border border-[#f08c3a]" style={{ left: `${object.bbox.x * 100}%`, top: `${object.bbox.y * 100}%`, width: `${object.bbox.width * 100}%`, height: `${object.bbox.height * 100}%` }} />)}
+       {movingObjects.map((object) => <div key={object.id} className="pointer-events-none absolute inset-0" aria-label={`Tracked object ${object.id}`}>
+         <div
+           className="absolute border border-[#f08c3a]"
+           style={{ left: `${object.bbox.x * 100}%`, top: `${object.bbox.y * 100}%`, width: `${object.bbox.width * 100}%`, height: `${object.bbox.height * 100}%` }}
+         />
+       </div>)}
       <div 
         className="absolute cursor-move border border-dashed border-[#6ab94f] touch-none"
         style={{ left: `${roi.x * 100}%`, top: `${roi.y * 100}%`, width: `${roi.width * 100}%`, height: `${roi.height * 100}%` }}

@@ -2,7 +2,6 @@ import type { ROI } from './roi';
 import type { MotionMask } from '../engine/motionTypes';
 
 export type MovingObject = {
-  id: number;
   bbox: { x: number; y: number; width: number; height: number };
   centroid: { x: number; y: number };
   area: number;
@@ -12,6 +11,12 @@ export type MovingObject = {
 
 export type MovingObjectWorkspace = { visited: Uint8Array; stack: Int32Array; capacity: number };
 export type MovingObjectAnalysis = { objects: MovingObject[]; changedPixelsInRoi: number; validMotionPixelsInRoi: number };
+
+const neighborOffsets = [
+  [-1, -1], [0, -1], [1, -1],
+  [-1, 0],           [1, 0],
+  [-1, 1],  [0, 1],  [1, 1],
+] as const;
 
 /** Merge nearby motion components before tracking so one moving subject does not
  * appear as a collection of flickering boxes. Coordinates are normalized. */
@@ -42,7 +47,7 @@ export function mergeMovingObjects(objects: MovingObject[], gap = 0.025): Moving
     }
     merged.push(group);
   }
-  return merged.map((object, index) => ({ ...object, id: index + 1 }));
+  return merged;
 }
 export function createMovingObjectWorkspace(): MovingObjectWorkspace { return { visited: new Uint8Array(0), stack: new Int32Array(0), capacity: 0 }; }
 
@@ -97,18 +102,22 @@ export function detectMovingObjects(mask: MotionMask, roi: ROI, minArea: number,
         minY = Math.min(minY, currentY);
         maxY = Math.max(maxY, currentY);
 
-         const left = currentX - 1, right = currentX + 1, above = currentY - 1, below = currentY + 1;
-         if (left >= x0) { const next = currentY * width + left; if (!visited[next] && data[next * 4] > 0) { visited[next] = 1; stack[stackSize++] = next; } }
-         if (right < x1) { const next = currentY * width + right; if (!visited[next] && data[next * 4] > 0) { visited[next] = 1; stack[stackSize++] = next; } }
-         if (above >= y0) { const next = above * width + currentX; if (!visited[next] && data[next * 4] > 0) { visited[next] = 1; stack[stackSize++] = next; } }
-         if (below < y1) { const next = below * width + currentX; if (!visited[next] && data[next * 4] > 0) { visited[next] = 1; stack[stackSize++] = next; } }
+          for (const [dx, dy] of neighborOffsets) {
+            const nextX = currentX + dx;
+            const nextY = currentY + dy;
+            if (nextX < x0 || nextX >= x1 || nextY < y0 || nextY >= y1) continue;
+            const next = nextY * width + nextX;
+            if (!visited[next] && data[next * 4] > 0) {
+              visited[next] = 1;
+              stack[stackSize++] = next;
+            }
+          }
        }
 
        changedPixelsInRoi += area;
        if (area < minArea) continue;
        validMotionPixelsInRoi += area;
-      objects.push({
-        id: objects.length + 1,
+       objects.push({
         bbox: { x: minX / width, y: minY / height, width: (maxX - minX + 1) / width, height: (maxY - minY + 1) / height },
         centroid: { x: sumX / area / width, y: sumY / area / height },
         area,

@@ -8,11 +8,21 @@ export type MotionEvent = {
   peakRatio: number;
   peakWasmLatency: number;
   peakEndToEndLatency: number;
+  object?: MotionEventObjectSnapshot;
+};
+
+export type MotionEventObjectSnapshot = {
+  bbox: { x: number; y: number; width: number; height: number };
+  centroid: { x: number; y: number };
+  area: number;
+  trackId: number;
+  meanIntensity: number;
+  maxIntensity: number;
 };
 
 export type MotionEventUpdate = { kind: 'started' | 'updated' | 'ended'; event: MotionEvent };
 
-type ActiveEvent = { id: number; startedAt: number; confirmedAt: number; lastMotionAt: number; peakRatio: number; peakWasmLatency: number; peakEndToEndLatency: number };
+type ActiveEvent = { id: number; startedAt: number; confirmedAt: number; lastMotionAt: number; peakRatio: number; peakWasmLatency: number; peakEndToEndLatency: number; object?: MotionEventObjectSnapshot };
 
 /** Converts noisy per-frame measurements into stable surveillance events. */
 export class MotionEventTracker {
@@ -23,7 +33,7 @@ export class MotionEventTracker {
 
   constructor(private readonly confirmDuration = 0.3, private readonly quietDuration = 1.5) {}
 
-  update(time: number, ratio: number, startThreshold: number, wasmLatency: number, endToEndLatency: number, continueThreshold = startThreshold * 0.5): MotionEventUpdate | null {
+  update(time: number, ratio: number, startThreshold: number, wasmLatency: number, endToEndLatency: number, continueThreshold = startThreshold * 0.5, object?: MotionEventObjectSnapshot): MotionEventUpdate | null {
     if (this.lastSeenAt !== null && time < this.lastSeenAt) this.reset();
     const moving = ratio >= (this.active ? continueThreshold : startThreshold);
 
@@ -31,7 +41,7 @@ export class MotionEventTracker {
       if (!moving) { this.candidateStartedAt = null; return null; }
       this.candidateStartedAt ??= time;
       if (time - this.candidateStartedAt < this.confirmDuration) return null;
-      this.active = { id: this.nextId++, startedAt: this.candidateStartedAt, confirmedAt: time, lastMotionAt: time, peakRatio: ratio, peakWasmLatency: wasmLatency, peakEndToEndLatency: endToEndLatency };
+      this.active = { id: this.nextId++, startedAt: this.candidateStartedAt, confirmedAt: time, lastMotionAt: time, peakRatio: ratio, peakWasmLatency: wasmLatency, peakEndToEndLatency: endToEndLatency, object };
       this.lastSeenAt = time;
       return { kind: 'started', event: { ...this.active, endedAt: time, status: 'active' } };
     }
@@ -42,6 +52,7 @@ export class MotionEventTracker {
       this.active.peakRatio = Math.max(this.active.peakRatio, ratio);
       this.active.peakWasmLatency = Math.max(this.active.peakWasmLatency, wasmLatency);
       this.active.peakEndToEndLatency = Math.max(this.active.peakEndToEndLatency, endToEndLatency);
+      if (ratio >= this.active.peakRatio) this.active.object = object ?? this.active.object;
       return { kind: 'updated', event: { ...this.active, endedAt: time, status: 'active' } };
     }
     if (time - this.active.lastMotionAt < this.quietDuration) return null;

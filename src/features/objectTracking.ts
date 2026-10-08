@@ -1,8 +1,9 @@
 import type { MovingObject } from './movingObjects';
 
 export type TrackConfig = { confirmFrames?: number; maxMissedFrames?: number; smoothing?: number; maxCenterDistance?: number };
+export type TrackedMovingObject = MovingObject & { id: number };
 
-type Track = MovingObject & { hits: number; missed: number };
+type Track = TrackedMovingObject & { hits: number; missed: number };
 
 function centerDistance(a: MovingObject, b: MovingObject) {
   const dx = a.centroid.x - b.centroid.x;
@@ -25,7 +26,7 @@ export class ObjectTracker {
     this.config = { confirmFrames: 2, maxMissedFrames: 4, smoothing: 0.35, maxCenterDistance: 0.12, ...config };
   }
 
-  update(objects: MovingObject[]): MovingObject[] {
+  update(objects: MovingObject[]): TrackedMovingObject[] {
     const candidates = objects.map((object) => ({ object, distance: Number.POSITIVE_INFINITY, track: -1 }));
     const pairs: Array<{ candidate: number; track: number; distance: number }> = [];
     candidates.forEach((candidate, candidateIndex) => this.tracks.forEach((track, trackIndex) => {

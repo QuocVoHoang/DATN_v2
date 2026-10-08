@@ -1,5 +1,4 @@
 export type WorkerObject = {
-  id: number;
   bbox: { x: number; y: number; width: number; height: number };
   centroid: { x: number; y: number };
   area: number;

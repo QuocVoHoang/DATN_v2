@@ -21,7 +21,7 @@ type RuntimeStatus = {
 
 type TelemetryPanelProps = {
   metrics: { fps: number; wasmLatency: number; endToEndLatency: number; p95: number; p99: number; droppedFrames: number; motion: number };
-  quality: { processingSize: { width: number; height: number }; adaptiveEnabled: boolean; effectiveResolutionPreset: string };
+  quality: { processingSize: { width: number; height: number }; adaptiveEnabled: boolean; effectiveResolutionPreset: string; frameSamplingRate: number; lastAdaptiveAction: string };
   pipeline: { browserStatus: BrowserStatus; runtimeStatus: RuntimeStatus };
   onThreadCountChange: (count: number) => void;
   threadMode: 'auto' | 'manual';
@@ -31,8 +31,9 @@ type TelemetryPanelProps = {
 
 export function TelemetryPanel({ metrics, quality, pipeline, onThreadCountChange, threadMode, threadStatus, onThreadModeChange }: TelemetryPanelProps) {
   const { fps, wasmLatency, endToEndLatency, p95, p99, droppedFrames, motion } = metrics;
-  const { processingSize, adaptiveEnabled, effectiveResolutionPreset } = quality;
+  const { processingSize, adaptiveEnabled, effectiveResolutionPreset, frameSamplingRate, lastAdaptiveAction } = quality;
   const { browserStatus, runtimeStatus } = pipeline;
+  const budgetStatus = p95 <= 0 ? 'Warming up' : p95 <= 33.3 ? 'OK' : 'Over budget';
   return <aside className="border border-[#d7e1dc] p-5">
     <div className="mb-4.5 font-mono text-[11px] tracking-[0.14em] text-[#587168]">LIVE TELEMETRY</div>
     <div className="grid grid-cols-2 gap-x-10 max-[600px]:grid-cols-2 max-[400px]:grid-cols-1">
@@ -42,10 +43,13 @@ export function TelemetryPanel({ metrics, quality, pipeline, onThreadCountChange
       <Metric label="End-to-end latency" value={endToEndLatency.toFixed(2)} unit="ms" />
       <Metric label="P95 latency" value={p95.toFixed(2)} unit="ms" />
       <Metric label="P99 latency" value={p99.toFixed(2)} unit="ms" />
-      {/* <Metric label="Dropped frames" value={droppedFrames.toString()} unit="frames" /> */}
+      <Metric label="Dropped frames" value={droppedFrames.toString()} unit="frames" />
+      <Metric label="Budget status" value={budgetStatus} unit="" />
       <Metric label="Processing size" value={processingSize.width ? `${processingSize.width}x${processingSize.height}` : '-'} unit="px" />
-      {/* <Metric label="Adaptive quality" value={adaptiveEnabled ? 'ON' : 'OFF'} unit="" /> */}
+      <Metric label="Adaptive quality" value={adaptiveEnabled ? 'ON' : 'OFF'} unit="" />
       <Metric label="Effective resolution" value={effectiveResolutionPreset} unit="" />
+      <Metric label="Frame sampling" value={`1/${frameSamplingRate}`} unit="" />
+      <Metric label="Last adaptive action" value={formatAdaptiveAction(lastAdaptiveAction)} unit="" />
     </div>
     <div className="mt-5 border-t border-[#d7e1dc] pt-4">
       <div className="mb-2 font-mono text-[11px] tracking-[0.14em] text-[#587168]">ACTIVE PIPELINE</div>
@@ -81,6 +85,16 @@ export function TelemetryPanel({ metrics, quality, pipeline, onThreadCountChange
       </div>
     </div>
   </aside>;
+}
+
+function formatAdaptiveAction(action: string) {
+  switch (action) {
+    case 'downscale-resolution': return 'Downscale resolution';
+    case 'upscale-resolution': return 'Upscale resolution';
+    case 'increase-frame-sampling': return 'Increase sampling';
+    case 'decrease-frame-sampling': return 'Decrease sampling';
+    default: return 'Keep';
+  }
 }
 
 function Status({ label, enabled, value }: { label: string; enabled: boolean; value?: string }) {

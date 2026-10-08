@@ -4,11 +4,14 @@ import { clampRoi, type ROI } from '../features/roi';
 import { MotionEventTracker, type MotionEvent } from '../features/motionEvents';
 import { createMovingObjectWorkspace, detectMovingObjects, mergeMovingObjects, type MovingObject } from '../features/movingObjects';
 import { LatencySamples } from '../features/latencySamples';
-import { getProcessingSize, resolutionPresets, type ResolutionPreset } from '../features/processingResolution';
+import { getProcessingSize, type ResolutionPreset } from '../features/processingResolution';
 import { createEventCsv, createEventJson, downloadTextFile } from '../features/eventExport';
 import { chooseFastestThread, threadCandidates, type ThreadMode } from '../features/autoThread';
 import { createMotionWorker } from '../engine/motionWorkerClient';
-import { ObjectTracker } from '../features/objectTracking';
+import { ObjectTracker, type TrackedMovingObject } from '../features/objectTracking';
+import type { MotionEventObjectSnapshot } from '../features/motionEvents';
+import { createAdaptiveControllerState, defaultAdaptiveControllerConfig, resetAdaptiveController, updateAdaptiveController } from '../features/adaptiveController';
+import type { AdaptiveControllerAction } from '../features/adaptiveController';
 
 const defaultRoi: ROI = { x: 0.2, y: 0.2, width: 0.6, height: 0.6 };
 const minThreshold = 1;
@@ -19,13 +22,7 @@ const maxLatencySamples = 180;
   const minObjectAreaRatio = 24 / (1920 * 1080);
   const eventStartRatio = 0.005;
   const eventContinueRatio = 0.002;
-const frameBudgetMs = 33.3;
-const adaptiveAlpha = 1.1;
-const adaptiveBeta = 0.8;
-const downshiftHoldWindows = 2;
-const upshiftHoldWindows = 5;
 export type { ResolutionPreset } from '../features/processingResolution';
-const resolutionOrder = resolutionPresets.map((item) => item.value);
 
 type BrowserStatus = {
   crossOriginIsolated: boolean;
@@ -77,6 +74,9 @@ export function useMotionAnalysis() {
   const [processingSize, setProcessingSize] = useState({ width: 0, height: 0 });
   const [adaptiveEnabled, setAdaptiveEnabled] = useState(false);
   const [effectiveResolutionPreset, setEffectiveResolutionPreset] = useState<ResolutionPreset>('1080p');
+  const [frameSamplingRate, setFrameSamplingRate] = useState(1);
+  const frameSamplingRateRef = useRef(1);
+  const [lastAdaptiveAction, setLastAdaptiveAction] = useState<AdaptiveControllerAction>('keep');
   const adaptiveEnabledRef = useRef(false);
   const effectiveResolutionRef = useRef(effectiveResolutionPreset);
   const thresholdRef = useRef(threshold);
@@ -93,7 +93,7 @@ export function useMotionAnalysis() {
   const [threadStatus, setThreadStatus] = useState('Manual');
   const [motion, setMotion] = useState(0);
   const [events, setEvents] = useState<MotionEvent[]>([]);
-  const [movingObjects, setMovingObjects] = useState<MovingObject[]>([]);
+  const [movingObjects, setMovingObjects] = useState<TrackedMovingObject[]>([]);
   const [browserStatus, setBrowserStatus] = useState<BrowserStatus>({
     crossOriginIsolated: false,
     sharedArrayBuffer: false,
@@ -111,8 +111,7 @@ export function useMotionAnalysis() {
     pthreads: browserStatus.crossOriginIsolated && browserStatus.sharedArrayBuffer ? 'available' : 'unavailable',
     activeThreads,
   };
-  const slowWindowsRef = useRef(0);
-  const fastWindowsRef = useRef(0);
+  const adaptiveControllerRef = useRef(createAdaptiveControllerState());
   const dashboardRef = useRef({ fps: 0, wasmLatency: 0, endToEndLatency: 0, p95: 0, p99: 0, motion: 0 });
 
   useEffect(() => {
@@ -174,8 +173,27 @@ export function useMotionAnalysis() {
   function updateAdaptiveEnabled(enabled: boolean) {
     adaptiveEnabledRef.current = enabled;
     setAdaptiveEnabled(enabled);
-    slowWindowsRef.current = 0;
-    fastWindowsRef.current = 0;
+    resetAdaptiveController(adaptiveControllerRef.current);
+    setLastAdaptiveAction('keep');
+    frameSamplingRateRef.current = 1;
+    setFrameSamplingRate(1);
+    if (!enabled) {
+      effectiveResolutionRef.current = resolutionPresetRef.current;
+      setEffectiveResolutionPreset(resolutionPresetRef.current);
+
+      const video = videoRef.current;
+      const source = sourceRef.current;
+      if (video && source && video.videoWidth > 0 && video.videoHeight > 0) {
+        const nextSize = getProcessingSize(video.videoWidth, video.videoHeight, resolutionPresetRef.current);
+        source.width = nextSize.width;
+        source.height = nextSize.height;
+        setProcessingSize(nextSize);
+        latencySamples.current.reset();
+        setP95(0);
+        setP99(0);
+        if (runningRef.current && !motionWorkerRef.current) void resetWasm();
+      }
+    }
   }
 
   useEffect(() => () => {
@@ -301,6 +319,10 @@ export function useMotionAnalysis() {
     }
 
     const size = getProcessingSize(video.videoWidth, video.videoHeight, resolutionPresetRef.current);
+    resetAdaptiveController(adaptiveControllerRef.current);
+    setLastAdaptiveAction('keep');
+    frameSamplingRateRef.current = 1;
+    setFrameSamplingRate(1);
     effectiveResolutionRef.current = resolutionPresetRef.current;
     setEffectiveResolutionPreset(resolutionPresetRef.current);
     source.width = size.width;
@@ -334,6 +356,7 @@ export function useMotionAnalysis() {
     let last = performance.now();
     let frames = 0;
     let lastDroppedFrames = 0;
+    let decodedFrames = 0;
     latencySamples.current.reset();
     lastAnalyzedVideoTimeRef.current = null;
     setP95(0);
@@ -356,6 +379,13 @@ export function useMotionAnalysis() {
       if (!runningRef.current || runId !== runIdRef.current) return;
       if (frameInFlight) return;
       frameInFlight = true;
+      decodedFrames += 1;
+      const samplingRate = frameSamplingRateRef.current;
+      if (samplingRate > 1 && decodedFrames % samplingRate !== 0) {
+        frameInFlight = false;
+        scheduleNext();
+        return;
+      }
 
       // Hidden source canvas provides pixels; output canvas displays processed data.
       try {
@@ -395,11 +425,15 @@ export function useMotionAnalysis() {
        lastAnalyzedVideoTimeRef.current = videoTime;
 
        // Normalize detected pixels against selected ROI area.
-       frameObjects = objectTracker.current.update(mergeMovingObjects(frameObjects));
-       setMovingObjects(frameObjects);
-      const nextEndToEndLatency = performance.now() - frameStarted;
+        const trackedObjects = objectTracker.current.update(mergeMovingObjects(frameObjects));
+        setMovingObjects(trackedObjects);
+        const representativeObject = trackedObjects.reduce<MotionEventObjectSnapshot | undefined>((best, object) => {
+          if (best && best.area >= object.area) return best;
+          return { bbox: object.bbox, centroid: object.centroid, area: object.area, trackId: object.id, meanIntensity: object.meanIntensity, maxIntensity: object.maxIntensity };
+        }, undefined);
+       const nextEndToEndLatency = performance.now() - frameStarted;
        latencySamples.current.add(nextEndToEndLatency);
-        const update = tracker.current.update(videoTime, ratio, eventStartRatio, nextWasmLatency, nextEndToEndLatency, eventContinueRatio);
+         const update = tracker.current.update(videoTime, ratio, eventStartRatio, nextWasmLatency, nextEndToEndLatency, eventContinueRatio, representativeObject);
 
        // Tracker turns continuous motion into discrete timeline events.
        if (update) setEvents((current) => update.kind === 'started'
@@ -424,35 +458,26 @@ export function useMotionAnalysis() {
         const [currentP95, currentP99] = latencySamples.current.percentiles(0.95, 0.99);
          dashboardRef.current.p95 = currentP95;
          dashboardRef.current.p99 = currentP99;
-        if (adaptiveEnabledRef.current && currentP95 > 0) {
-          const maxIndex = resolutionOrder.indexOf(resolutionPresetRef.current);
-          const currentIndex = resolutionOrder.indexOf(effectiveResolutionRef.current);
-          let nextPreset = effectiveResolutionRef.current;
-          const targetFps = 30;
-           const overloaded = currentP95 > adaptiveAlpha * frameBudgetMs || windowFps < targetFps * 0.85 || windowDroppedFrames > 0;
-           const healthy = currentP95 < adaptiveBeta * frameBudgetMs && windowFps >= targetFps * 0.95 && windowDroppedFrames === 0;
-          if (overloaded) {
-            slowWindowsRef.current++;
-            fastWindowsRef.current = 0;
-            if (slowWindowsRef.current >= downshiftHoldWindows && currentIndex > 0) {
-              nextPreset = resolutionOrder[currentIndex - 1];
-              slowWindowsRef.current = 0;
-            }
-          } else if (healthy) {
-            fastWindowsRef.current++;
-            slowWindowsRef.current = 0;
-            if (fastWindowsRef.current >= upshiftHoldWindows && currentIndex < maxIndex) {
-              nextPreset = resolutionOrder[currentIndex + 1];
-              fastWindowsRef.current = 0;
-            }
-          } else {
-            slowWindowsRef.current = 0;
-            fastWindowsRef.current = 0;
-          }
-          if (nextPreset !== effectiveResolutionRef.current) {
-            effectiveResolutionRef.current = nextPreset;
-            setEffectiveResolutionPreset(nextPreset);
-            const nextSize = getProcessingSize(video.videoWidth, video.videoHeight, nextPreset);
+         if (adaptiveEnabledRef.current && currentP95 > 0) {
+           const decision = updateAdaptiveController(adaptiveControllerRef.current, {
+             now,
+             p95Latency: currentP95,
+             fps: windowFps,
+             droppedFramesDelta: windowDroppedFrames,
+             currentResolution: effectiveResolutionRef.current,
+             requestedResolution: resolutionPresetRef.current,
+             currentFrameSamplingRate: frameSamplingRateRef.current,
+             maxFrameSamplingRate: 4,
+           }, defaultAdaptiveControllerConfig);
+           setLastAdaptiveAction(decision.action);
+           if (decision.frameSamplingRate !== frameSamplingRateRef.current) {
+             frameSamplingRateRef.current = decision.frameSamplingRate;
+             setFrameSamplingRate(decision.frameSamplingRate);
+           }
+           if (decision.resolution !== effectiveResolutionRef.current) {
+             effectiveResolutionRef.current = decision.resolution;
+             setEffectiveResolutionPreset(decision.resolution);
+             const nextSize = getProcessingSize(video.videoWidth, video.videoHeight, decision.resolution);
             source.width = nextSize.width;
             source.height = nextSize.height;
             setProcessingSize(nextSize);
@@ -508,6 +533,8 @@ export function useMotionAnalysis() {
     p95,
     p99,
     droppedFrames,
+    frameSamplingRate,
+    lastAdaptiveAction,
     motion,
     events,
     movingObjects,
