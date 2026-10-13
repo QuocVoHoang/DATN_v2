@@ -1,7 +1,15 @@
 import type { WorkerRequest, WorkerResponse } from '../features/motionWorkerProtocol';
 import { createMovingObjectWorkspace, detectMovingObjects } from '../features/movingObjects';
 
-type WorkerScope = { Module?: Partial<Wasm> & { onRuntimeInitialized?: () => void; onAbort?: (reason?: unknown) => void; locateFile?: (path: string) => string }; postMessage(message: WorkerResponse, transfer?: Transferable[]): void; onmessage: (event: MessageEvent<WorkerRequest>) => void };
+type WorkerScope = {
+  Module?: Partial<Wasm> & {
+    onRuntimeInitialized?: () => void;
+    onAbort?: (reason?: unknown) => void;
+    locateFile?: (path: string) => string;
+  };
+  postMessage(message: WorkerResponse, transfer?: Transferable[]): void;
+  onmessage: (event: MessageEvent<WorkerRequest>) => void;
+};
 
 type Wasm = {
   HEAPU8: Uint8Array;
@@ -23,10 +31,16 @@ const objectWorkspace = createMovingObjectWorkspace();
 function initWasm(): Promise<Wasm> {
   if (wasmPromise) return wasmPromise;
   wasmPromise = new Promise((resolve, reject) => {
-    const loadModule = new Function('url', 'return import(url)') as (url: string) => Promise<unknown>;
+    const loadModule = new Function('url', 'return import(url)') as (
+      url: string,
+    ) => Promise<unknown>;
     void loadModule('/wasm/motion_wasm_worker.mjs')
       .then((module) => {
-        const factory = (module as { default?: (options?: Record<string, unknown>) => Promise<Wasm> }).default;
+        const factory = (
+          module as {
+            default?: (options?: Record<string, unknown>) => Promise<Wasm>;
+          }
+        ).default;
         if (!factory) throw new Error('Worker WASM factory is unavailable.');
         return factory({ locateFile: (path: string) => `/wasm/${path}` });
       })
@@ -50,26 +64,56 @@ scope.onmessage = async (event: MessageEvent<WorkerRequest>) => {
     const image = context.getImageData(0, 0, request.width, request.height);
     const captureMs = performance.now() - started;
     const wasm = await initWasm();
-    if (image.data.length > inputCapacity) { const next = wasm._malloc(image.data.length); if (!next) throw new Error('Unable to allocate WASM input.'); if (inputPointer) wasm._free(inputPointer); inputPointer = next; inputCapacity = image.data.length; }
+    if (image.data.length > inputCapacity) {
+      const next = wasm._malloc(image.data.length);
+      if (!next) throw new Error('Unable to allocate WASM input.');
+      if (inputPointer) wasm._free(inputPointer);
+      inputPointer = next;
+      inputCapacity = image.data.length;
+    }
     wasm.HEAPU8.set(image.data, inputPointer);
     const engineStarted = performance.now();
-    const outputPointer = wasm._processMotion(inputPointer, request.width, request.height, request.threshold);
+    const outputPointer = wasm._processMotion(
+      inputPointer,
+      request.width,
+      request.height,
+      request.threshold,
+    );
     const engineMs = performance.now() - engineStarted;
     if (!outputPointer) throw new Error(`WASM motion error ${wasm._getLastMotionError()}`);
     const mask = new Uint8Array(wasm.HEAPU8.buffer, outputPointer, image.data.length);
     const analysisStarted = performance.now();
-    const analysis = detectMovingObjects({ width: request.width, height: request.height, data: mask }, request.roi, request.minArea, objectWorkspace);
+    const analysis = detectMovingObjects(
+      { width: request.width, height: request.height, data: mask },
+      request.roi,
+      request.minArea,
+      objectWorkspace,
+    );
     const analysisMs = performance.now() - analysisStarted;
-    const response: WorkerResponse = { type: 'result', requestId: request.requestId, objects: analysis.objects, changedPixelsInRoi: analysis.changedPixelsInRoi, validMotionPixelsInRoi: analysis.validMotionPixelsInRoi, engineMs, captureMs, analysisMs };
+    const response: WorkerResponse = {
+      type: 'result',
+      requestId: request.requestId,
+      objects: analysis.objects,
+      changedPixelsInRoi: analysis.changedPixelsInRoi,
+      validMotionPixelsInRoi: analysis.validMotionPixelsInRoi,
+      engineMs,
+      captureMs,
+      analysisMs,
+    };
     if (request.includeMask) {
       response.maskData = new Uint8Array(image.width * image.height);
-      for (let index = 0; index < response.maskData.length; index += 1) response.maskData[index] = mask[index * 4];
+      for (let index = 0; index < response.maskData.length; index += 1)
+        response.maskData[index] = mask[index * 4];
       response.maskWidth = image.width;
       response.maskHeight = image.height;
       scope.postMessage(response, [response.maskData.buffer]);
     } else scope.postMessage(response);
   } catch (error) {
     request.bitmap.close();
-    scope.postMessage({ type: 'error', requestId: request.requestId, message: error instanceof Error ? error.message : String(error) } satisfies WorkerResponse);
+    scope.postMessage({
+      type: 'error',
+      requestId: request.requestId,
+      message: error instanceof Error ? error.message : String(error),
+    } satisfies WorkerResponse);
   }
 };

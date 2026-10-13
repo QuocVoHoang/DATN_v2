@@ -1,6 +1,13 @@
 import { motionErrorMessages, type MotionResult, type WasmModule } from './motionTypes';
 
-declare global { interface Window { Module?: Partial<WasmModule> & { onRuntimeInitialized?: () => void; onAbort?: (reason?: unknown) => void }; } }
+declare global {
+  interface Window {
+    Module?: Partial<WasmModule> & {
+      onRuntimeInitialized?: () => void;
+      onAbort?: (reason?: unknown) => void;
+    };
+  }
+}
 
 let modulePromise: Promise<WasmModule> | null = null;
 let inputPointer = 0;
@@ -19,7 +26,8 @@ export function initWasm(): Promise<WasmModule> {
     };
     window.Module = {
       onRuntimeInitialized: () => resolve(window.Module as WasmModule),
-      onAbort: (reason?: unknown) => fail(new Error(`WASM runtime aborted${reason ? `: ${String(reason)}` : ''}`)),
+      onAbort: (reason?: unknown) =>
+        fail(new Error(`WASM runtime aborted${reason ? `: ${String(reason)}` : ''}`)),
     };
     script.src = '/wasm/motion_wasm.js';
     script.onerror = () => fail(new Error('WASM has not been built. Run npm run build:wasm.'));
@@ -31,7 +39,13 @@ export function initWasm(): Promise<WasmModule> {
 export async function processWithWasm(image: ImageData, threshold: number): Promise<MotionResult> {
   const module = await initWasm();
   const input = image.data;
-  if (!Number.isInteger(image.width) || !Number.isInteger(image.height) || image.width <= 0 || image.height <= 0 || input.length !== image.width * image.height * 4) {
+  if (
+    !Number.isInteger(image.width) ||
+    !Number.isInteger(image.height) ||
+    image.width <= 0 ||
+    image.height <= 0 ||
+    input.length !== image.width * image.height * 4
+  ) {
     throw new Error('Invalid image dimensions or RGBA data length.');
   }
   if (!Number.isInteger(threshold) || threshold < 1 || threshold > 255) {
@@ -61,7 +75,15 @@ export async function processWithWasm(image: ImageData, threshold: number): Prom
     throw new Error('Motion engine returned an output outside WASM memory.');
   }
   const outputViewMs = performance.now() - outputStarted;
-  return { mask: { width: image.width, height: image.height, data: new Uint8Array(heap.buffer, outputPointer, byteLength) }, changedPixels: module._getChangedPixelCount(), metrics: { inputCopyMs, engineMs, outputViewMs } };
+  return {
+    mask: {
+      width: image.width,
+      height: image.height,
+      data: new Uint8Array(heap.buffer, outputPointer, byteLength),
+    },
+    changedPixels: module._getChangedPixelCount(),
+    metrics: { inputCopyMs, engineMs, outputViewMs },
+  };
 }
 
 export async function resetWasm(): Promise<void> {

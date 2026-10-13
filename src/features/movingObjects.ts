@@ -9,13 +9,26 @@ export type MovingObject = {
   maxIntensity: number;
 };
 
-export type MovingObjectWorkspace = { visited: Uint8Array; stack: Int32Array; capacity: number };
-export type MovingObjectAnalysis = { objects: MovingObject[]; changedPixelsInRoi: number; validMotionPixelsInRoi: number };
+export type MovingObjectWorkspace = {
+  visited: Uint8Array;
+  stack: Int32Array;
+  capacity: number;
+};
+export type MovingObjectAnalysis = {
+  objects: MovingObject[];
+  changedPixelsInRoi: number;
+  validMotionPixelsInRoi: number;
+};
 
 const neighborOffsets = [
-  [-1, -1], [0, -1], [1, -1],
-  [-1, 0],           [1, 0],
-  [-1, 1],  [0, 1],  [1, 1],
+  [-1, -1],
+  [0, -1],
+  [1, -1],
+  [-1, 0],
+  [1, 0],
+  [-1, 1],
+  [0, 1],
+  [1, 1],
 ] as const;
 
 /** Merge nearby motion components before tracking so one moving subject does not
@@ -41,7 +54,17 @@ export function mergeMovingObjects(objects: MovingObject[], gap = 0.025): Moving
         const right = Math.max(group.bbox.x + group.bbox.width, next.bbox.x + next.bbox.width);
         const bottom = Math.max(group.bbox.y + group.bbox.height, next.bbox.y + next.bbox.height);
         const area = group.area + next.area;
-        group = { ...group, bbox: { x: left, y: top, width: right - left, height: bottom - top }, centroid: { x: (group.centroid.x * group.area + next.centroid.x * next.area) / area, y: (group.centroid.y * group.area + next.centroid.y * next.area) / area }, area, meanIntensity: (group.meanIntensity * group.area + next.meanIntensity * next.area) / area, maxIntensity: Math.max(group.maxIntensity, next.maxIntensity) };
+        group = {
+          ...group,
+          bbox: { x: left, y: top, width: right - left, height: bottom - top },
+          centroid: {
+            x: (group.centroid.x * group.area + next.centroid.x * next.area) / area,
+            y: (group.centroid.y * group.area + next.centroid.y * next.area) / area,
+          },
+          area,
+          meanIntensity: (group.meanIntensity * group.area + next.meanIntensity * next.area) / area,
+          maxIntensity: Math.max(group.maxIntensity, next.maxIntensity),
+        };
         changed = true;
       }
     }
@@ -49,9 +72,16 @@ export function mergeMovingObjects(objects: MovingObject[], gap = 0.025): Moving
   }
   return merged;
 }
-export function createMovingObjectWorkspace(): MovingObjectWorkspace { return { visited: new Uint8Array(0), stack: new Int32Array(0), capacity: 0 }; }
+export function createMovingObjectWorkspace(): MovingObjectWorkspace {
+  return { visited: new Uint8Array(0), stack: new Int32Array(0), capacity: 0 };
+}
 
-export function detectMovingObjects(mask: MotionMask, roi: ROI, minArea: number, workspace: MovingObjectWorkspace): MovingObjectAnalysis {
+export function detectMovingObjects(
+  mask: MotionMask,
+  roi: ROI,
+  minArea: number,
+  workspace: MovingObjectWorkspace,
+): MovingObjectAnalysis {
   const { width, height, data } = mask;
   const x0 = Math.max(0, Math.floor(roi.x * width));
   const y0 = Math.max(0, Math.floor(roi.y * height));
@@ -75,8 +105,8 @@ export function detectMovingObjects(mask: MotionMask, roi: ROI, minArea: number,
       if (visited[start] || data[start * 4] === 0) continue;
 
       visited[start] = 1;
-       let stackSize = 0;
-       stack[stackSize++] = start;
+      let stackSize = 0;
+      stack[stackSize++] = start;
       let area = 0;
       let minX = x;
       let maxX = x;
@@ -87,8 +117,8 @@ export function detectMovingObjects(mask: MotionMask, roi: ROI, minArea: number,
       let sumIntensity = 0;
       let maxIntensity = 0;
 
-       while (stackSize > 0) {
-         const index = stack[--stackSize];
+      while (stackSize > 0) {
+        const index = stack[--stackSize];
         const currentX = index % width;
         const currentY = Math.floor(index / width);
         const intensity = data[index * 4];
@@ -102,23 +132,28 @@ export function detectMovingObjects(mask: MotionMask, roi: ROI, minArea: number,
         minY = Math.min(minY, currentY);
         maxY = Math.max(maxY, currentY);
 
-          for (const [dx, dy] of neighborOffsets) {
-            const nextX = currentX + dx;
-            const nextY = currentY + dy;
-            if (nextX < x0 || nextX >= x1 || nextY < y0 || nextY >= y1) continue;
-            const next = nextY * width + nextX;
-            if (!visited[next] && data[next * 4] > 0) {
-              visited[next] = 1;
-              stack[stackSize++] = next;
-            }
+        for (const [dx, dy] of neighborOffsets) {
+          const nextX = currentX + dx;
+          const nextY = currentY + dy;
+          if (nextX < x0 || nextX >= x1 || nextY < y0 || nextY >= y1) continue;
+          const next = nextY * width + nextX;
+          if (!visited[next] && data[next * 4] > 0) {
+            visited[next] = 1;
+            stack[stackSize++] = next;
           }
-       }
+        }
+      }
 
-       changedPixelsInRoi += area;
-       if (area < minArea) continue;
-       validMotionPixelsInRoi += area;
-       objects.push({
-        bbox: { x: minX / width, y: minY / height, width: (maxX - minX + 1) / width, height: (maxY - minY + 1) / height },
+      changedPixelsInRoi += area;
+      if (area < minArea) continue;
+      validMotionPixelsInRoi += area;
+      objects.push({
+        bbox: {
+          x: minX / width,
+          y: minY / height,
+          width: (maxX - minX + 1) / width,
+          height: (maxY - minY + 1) / height,
+        },
         centroid: { x: sumX / area / width, y: sumY / area / height },
         area,
         meanIntensity: sumIntensity / area,

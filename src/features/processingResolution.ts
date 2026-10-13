@@ -10,11 +10,16 @@ export const resolutionPresets = [
   { value: '4k', label: '4K', height: 2160 },
 ] as const;
 
-export type ResolutionPreset = typeof resolutionPresets[number]['value'];
+export type ResolutionPreset = (typeof resolutionPresets)[number]['value'];
 
-export function getProcessingSize(videoWidth: number, videoHeight: number, preset: ResolutionPreset) {
-  const targetHeight = resolutionPresets.find((item) => item.value === preset)?.height ?? videoHeight;
+export function getProcessingSize(
+  videoWidth: number,
+  videoHeight: number,
+  preset: ResolutionPreset,
+) {
+  const targetHeight =
+    resolutionPresets.find((item) => item.value === preset)?.height ?? videoHeight;
   const height = Math.max(1, Math.min(videoHeight, targetHeight));
-  const width = Math.max(1, Math.round((videoWidth * height / videoHeight) / 2) * 2);
+  const width = Math.max(1, Math.round((videoWidth * height) / videoHeight / 2) * 2);
   return { width, height };
 }

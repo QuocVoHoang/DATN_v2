@@ -2,7 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import { configureWasmThreads, processWithWasm, resetWasm } from '../engine/wasmMotion';
 import { clampRoi, type ROI } from '../features/roi';
 import { MotionEventTracker, type MotionEvent } from '../features/motionEvents';
-import { createMovingObjectWorkspace, detectMovingObjects, mergeMovingObjects, type MovingObject } from '../features/movingObjects';
+import {
+  createMovingObjectWorkspace,
+  detectMovingObjects,
+  mergeMovingObjects,
+  type MovingObject,
+} from '../features/movingObjects';
 import { LatencySamples } from '../features/latencySamples';
 import { getProcessingSize, type ResolutionPreset } from '../features/processingResolution';
 import { createEventCsv, createEventJson, downloadTextFile } from '../features/eventExport';
@@ -10,7 +15,12 @@ import { chooseFastestThread, threadCandidates, type ThreadMode } from '../featu
 import { createMotionWorker } from '../engine/motionWorkerClient';
 import { ObjectTracker, type TrackedMovingObject } from '../features/objectTracking';
 import type { MotionEventObjectSnapshot } from '../features/motionEvents';
-import { createAdaptiveControllerState, defaultAdaptiveControllerConfig, resetAdaptiveController, updateAdaptiveController } from '../features/adaptiveController';
+import {
+  createAdaptiveControllerState,
+  defaultAdaptiveControllerConfig,
+  resetAdaptiveController,
+  updateAdaptiveController,
+} from '../features/adaptiveController';
 import type { AdaptiveControllerAction } from '../features/adaptiveController';
 import type { MotionMaskPreviewData } from '../components/MotionMaskPreview';
 
@@ -18,11 +28,11 @@ const defaultRoi: ROI = { x: 0.2, y: 0.2, width: 0.6, height: 0.6 };
 const minThreshold = 1;
 const maxThreshold = 255;
 const maxLatencySamples = 180;
-  // Keep this small enough for thin motion contours at 1080p. The event
-  // threshold below still prevents isolated noise from becoming an alert.
-  const minObjectAreaRatio = 24 / (1920 * 1080);
-  const eventStartRatio = 0.005;
-  const eventContinueRatio = 0.002;
+// Keep this small enough for thin motion contours at 1080p. The event
+// threshold below still prevents isolated noise from becoming an alert.
+const minObjectAreaRatio = 24 / (1920 * 1080);
+const eventStartRatio = 0.005;
+const eventContinueRatio = 0.002;
 export type { ResolutionPreset } from '../features/processingResolution';
 
 type BrowserStatus = {
@@ -74,7 +84,8 @@ export function useMotionAnalysis() {
   const resolutionPresetRef = useRef(resolutionPreset);
   const [processingSize, setProcessingSize] = useState({ width: 0, height: 0 });
   const [adaptiveEnabled, setAdaptiveEnabled] = useState(false);
-  const [effectiveResolutionPreset, setEffectiveResolutionPreset] = useState<ResolutionPreset>('1080p');
+  const [effectiveResolutionPreset, setEffectiveResolutionPreset] =
+    useState<ResolutionPreset>('1080p');
   const [frameSamplingRate, setFrameSamplingRate] = useState(1);
   const [maskPreviewEnabled, setMaskPreviewEnabled] = useState(false);
   const [maskPreview, setMaskPreview] = useState<MotionMaskPreviewData | null>(null);
@@ -113,11 +124,21 @@ export function useMotionAnalysis() {
     roiFiltering: 'active',
     cameraInput: 'inactive',
     offscreenCanvasWorker: motionWorkerRef.current ? 'active' : 'inactive',
-    pthreads: browserStatus.crossOriginIsolated && browserStatus.sharedArrayBuffer ? 'available' : 'unavailable',
+    pthreads:
+      browserStatus.crossOriginIsolated && browserStatus.sharedArrayBuffer
+        ? 'available'
+        : 'unavailable',
     activeThreads,
   };
   const adaptiveControllerRef = useRef(createAdaptiveControllerState());
-  const dashboardRef = useRef({ fps: 0, wasmLatency: 0, endToEndLatency: 0, p95: 0, p99: 0, motion: 0 });
+  const dashboardRef = useRef({
+    fps: 0,
+    wasmLatency: 0,
+    endToEndLatency: 0,
+    p95: 0,
+    p99: 0,
+    motion: 0,
+  });
 
   useEffect(() => {
     const nextStatus = {
@@ -130,12 +151,18 @@ export function useMotionAnalysis() {
     setBrowserStatus(nextStatus);
     dashboardTimerRef.current = window.setInterval(() => {
       const snapshot = dashboardRef.current;
-      setFps(snapshot.fps); setWasmLatency(snapshot.wasmLatency); setEndToEndLatency(snapshot.endToEndLatency);
-      setP95(snapshot.p95); setP99(snapshot.p99); setMotion(snapshot.motion);
+      setFps(snapshot.fps);
+      setWasmLatency(snapshot.wasmLatency);
+      setEndToEndLatency(snapshot.endToEndLatency);
+      setP95(snapshot.p95);
+      setP99(snapshot.p99);
+      setMotion(snapshot.motion);
     }, 200);
     // Keep the user-selected default (one thread). Auto-thread calibration is
     // intentionally separate and must not silently override this preference.
-    return () => { if (dashboardTimerRef.current !== null) window.clearInterval(dashboardTimerRef.current); };
+    return () => {
+      if (dashboardTimerRef.current !== null) window.clearInterval(dashboardTimerRef.current);
+    };
   }, []);
 
   function updateThreadCount(value: number) {
@@ -145,16 +172,27 @@ export function useMotionAnalysis() {
     latencySamples.current.reset();
     setP95(0);
     setP99(0);
-    void configureWasmThreads(next).then((actual) => { setActiveThreads(actual); setThreadStatus('Manual'); }).catch((error) => {
-      setStatus(error instanceof Error ? error.message : 'Unable to change WASM thread count');
-      setThreadStatus('Error');
-    });
+    void configureWasmThreads(next)
+      .then((actual) => {
+        setActiveThreads(actual);
+        setThreadStatus('Manual');
+      })
+      .catch((error) => {
+        setStatus(error instanceof Error ? error.message : 'Unable to change WASM thread count');
+        setThreadStatus('Error');
+      });
   }
 
   async function updateThreadMode(mode: ThreadMode) {
     setThreadModeState(mode);
-    if (mode === 'manual') { setThreadStatus('Manual'); return; }
-    if (!sourceReady || !sourceRef.current || !videoRef.current) { setThreadStatus('Auto: start analysis to calibrate'); return; }
+    if (mode === 'manual') {
+      setThreadStatus('Manual');
+      return;
+    }
+    if (!sourceReady || !sourceRef.current || !videoRef.current) {
+      setThreadStatus('Auto: start analysis to calibrate');
+      return;
+    }
     setThreadStatus('Calibrating');
   }
 
@@ -189,7 +227,11 @@ export function useMotionAnalysis() {
       const video = videoRef.current;
       const source = sourceRef.current;
       if (video && source && video.videoWidth > 0 && video.videoHeight > 0) {
-        const nextSize = getProcessingSize(video.videoWidth, video.videoHeight, resolutionPresetRef.current);
+        const nextSize = getProcessingSize(
+          video.videoWidth,
+          video.videoHeight,
+          resolutionPresetRef.current,
+        );
         source.width = nextSize.width;
         source.height = nextSize.height;
         setProcessingSize(nextSize);
@@ -201,14 +243,17 @@ export function useMotionAnalysis() {
     }
   }
 
-  useEffect(() => () => {
-    stopAnalysis();
-    sourceRequestRef.current++;
-    if (videoObjectUrlRef.current) {
-      URL.revokeObjectURL(videoObjectUrlRef.current);
-      videoObjectUrlRef.current = null;
-    }
-  }, []);
+  useEffect(
+    () => () => {
+      stopAnalysis();
+      sourceRequestRef.current++;
+      if (videoObjectUrlRef.current) {
+        URL.revokeObjectURL(videoObjectUrlRef.current);
+        videoObjectUrlRef.current = null;
+      }
+    },
+    [],
+  );
 
   function stopAnalysis(statusText?: string) {
     runningRef.current = false;
@@ -218,7 +263,11 @@ export function useMotionAnalysis() {
       frameRequestRef.current = null;
     }
     if (videoFrameRequestRef.current !== null) {
-      const video = videoRef.current as HTMLVideoElement & { cancelVideoFrameCallback?: (id: number) => void } | null;
+      const video = videoRef.current as
+        | (HTMLVideoElement & {
+            cancelVideoFrameCallback?: (id: number) => void;
+          })
+        | null;
       video?.cancelVideoFrameCallback?.(videoFrameRequestRef.current);
       videoFrameRequestRef.current = null;
     }
@@ -267,8 +316,14 @@ export function useMotionAnalysis() {
     videoObjectUrlRef.current = videoObjectUrl;
     try {
       const metadataPromise = new Promise<void>((resolve, reject) => {
-        const onLoaded = () => { cleanup(); resolve(); };
-        const onError = () => { cleanup(); reject(new Error('Unable to load selected video.')); };
+        const onLoaded = () => {
+          cleanup();
+          resolve();
+        };
+        const onError = () => {
+          cleanup();
+          reject(new Error('Unable to load selected video.'));
+        };
         const cleanup = () => {
           video.removeEventListener('loadedmetadata', onLoaded);
           video.removeEventListener('error', onError);
@@ -280,7 +335,8 @@ export function useMotionAnalysis() {
       video.load();
       await metadataPromise;
       if (requestId !== sourceRequestRef.current) return;
-      if (!video.videoWidth || !video.videoHeight) throw new Error('Video has no usable dimensions.');
+      if (!video.videoWidth || !video.videoHeight)
+        throw new Error('Video has no usable dimensions.');
       setSourceReady(true);
       setStatus('Video ready');
     } catch (error) {
@@ -299,7 +355,10 @@ export function useMotionAnalysis() {
 
     const runId = ++runIdRef.current;
     const video = videoRef.current;
-    const workerSupported = typeof Worker !== 'undefined' && typeof OffscreenCanvas !== 'undefined' && typeof createImageBitmap === 'function';
+    const workerSupported =
+      typeof Worker !== 'undefined' &&
+      typeof OffscreenCanvas !== 'undefined' &&
+      typeof createImageBitmap === 'function';
 
     // Stop can pause the video, so every new analysis run must resume playback.
     try {
@@ -325,7 +384,11 @@ export function useMotionAnalysis() {
       return;
     }
 
-    const size = getProcessingSize(video.videoWidth, video.videoHeight, resolutionPresetRef.current);
+    const size = getProcessingSize(
+      video.videoWidth,
+      video.videoHeight,
+      resolutionPresetRef.current,
+    );
     resetAdaptiveController(adaptiveControllerRef.current);
     setLastAdaptiveAction('keep');
     frameSamplingRateRef.current = 1;
@@ -348,7 +411,10 @@ export function useMotionAnalysis() {
         await resetWasm();
         const started = performance.now();
         await processWithWasm(calibrationImage, thresholdRef.current);
-        results.push({ threads: candidate, latency: performance.now() - started });
+        results.push({
+          threads: candidate,
+          latency: performance.now() - started,
+        });
       }
       const selected = chooseFastestThread(results);
       await configureWasmThreads(selected);
@@ -373,10 +439,16 @@ export function useMotionAnalysis() {
     const scheduleNext = () => {
       if (!runningRef.current || runId !== runIdRef.current) return;
       const videoWithCallback = video as HTMLVideoElement & {
-        requestVideoFrameCallback?: (callback: (now: number, metadata: { mediaTime: number }) => void) => number;
+        requestVideoFrameCallback?: (
+          callback: (now: number, metadata: { mediaTime: number }) => void,
+        ) => number;
       };
       if (videoWithCallback.requestVideoFrameCallback) {
-        videoFrameRequestRef.current = videoWithCallback.requestVideoFrameCallback((_now, metadata) => { void loop(metadata.mediaTime); });
+        videoFrameRequestRef.current = videoWithCallback.requestVideoFrameCallback(
+          (_now, metadata) => {
+            void loop(metadata.mediaTime);
+          },
+        );
       } else {
         frameRequestRef.current = requestAnimationFrame(() => void loop(video.currentTime));
       }
@@ -405,113 +477,187 @@ export function useMotionAnalysis() {
           return;
         }
         const frameStarted = performance.now();
-        const minObjectArea = Math.max(4, Math.round(minObjectAreaRatio * source.width * source.height));
+        const minObjectArea = Math.max(
+          4,
+          Math.round(minObjectAreaRatio * source.width * source.height),
+        );
         let nextWasmLatency: number;
         let ratio: number;
         let frameObjects: MovingObject[];
         if (motionWorkerRef.current) {
           const bitmap = await createImageBitmap(video);
           const includeMask = maskPreviewEnabled;
-          const workerResult = await motionWorkerRef.current.process(bitmap, source.width, source.height, thresholdRef.current, roiRef.current, minObjectArea, includeMask);
-          if (workerResult.type !== 'result') throw new Error(workerResult.message ?? 'Motion worker failed.');
+          const workerResult = await motionWorkerRef.current.process(
+            bitmap,
+            source.width,
+            source.height,
+            thresholdRef.current,
+            roiRef.current,
+            minObjectArea,
+            includeMask,
+          );
+          if (workerResult.type !== 'result')
+            throw new Error(workerResult.message ?? 'Motion worker failed.');
           nextWasmLatency = workerResult.engineMs ?? 0;
-          frameObjects = (workerResult.objects ?? []).map((object) => ({ ...object, meanIntensity: 255, maxIntensity: 255 }));
-          const roiPixels = Math.max(1, roiRef.current.width * roiRef.current.height * source.width * source.height);
+          frameObjects = (workerResult.objects ?? []).map((object) => ({
+            ...object,
+            meanIntensity: 255,
+            maxIntensity: 255,
+          }));
+          const roiPixels = Math.max(
+            1,
+            roiRef.current.width * roiRef.current.height * source.width * source.height,
+          );
           ratio = (workerResult.validMotionPixelsInRoi ?? 0) / roiPixels;
-          if (includeMask && workerResult.maskData && workerResult.maskWidth && workerResult.maskHeight) { lastMaskPreviewAtRef.current = performance.now(); setMaskPreview({ width: workerResult.maskWidth, height: workerResult.maskHeight, data: workerResult.maskData }); }
+          if (
+            includeMask &&
+            workerResult.maskData &&
+            workerResult.maskWidth &&
+            workerResult.maskHeight
+          ) {
+            lastMaskPreviewAtRef.current = performance.now();
+            setMaskPreview({
+              width: workerResult.maskWidth,
+              height: workerResult.maskHeight,
+              data: workerResult.maskData,
+            });
+          }
         } else {
           ctx.drawImage(video, 0, 0, source.width, source.height);
           const image = ctx.getImageData(0, 0, source.width, source.height);
           const result = await processWithWasm(image, thresholdRef.current);
           nextWasmLatency = result.metrics.engineMs;
           const currentRoi = roiRef.current;
-          const analysis = detectMovingObjects(result.mask, currentRoi, minObjectArea, objectWorkspace.current);
+          const analysis = detectMovingObjects(
+            result.mask,
+            currentRoi,
+            minObjectArea,
+            objectWorkspace.current,
+          );
           frameObjects = analysis.objects;
-          const roiPixels = Math.max(1, currentRoi.width * currentRoi.height * image.width * image.height);
+          const roiPixels = Math.max(
+            1,
+            currentRoi.width * currentRoi.height * image.width * image.height,
+          );
           ratio = analysis.validMotionPixelsInRoi / roiPixels;
           if (maskPreviewEnabled) {
             lastMaskPreviewAtRef.current = performance.now();
             const maskData = new Uint8Array(result.mask.width * result.mask.height);
-            for (let index = 0; index < maskData.length; index += 1) maskData[index] = result.mask.data[index * 4];
-            setMaskPreview({ width: result.mask.width, height: result.mask.height, data: maskData });
+            for (let index = 0; index < maskData.length; index += 1)
+              maskData[index] = result.mask.data[index * 4];
+            setMaskPreview({
+              width: result.mask.width,
+              height: result.mask.height,
+              data: maskData,
+            });
           }
         }
-       if (!runningRef.current || runId !== runIdRef.current) return;
-       lastAnalyzedVideoTimeRef.current = videoTime;
+        if (!runningRef.current || runId !== runIdRef.current) return;
+        lastAnalyzedVideoTimeRef.current = videoTime;
 
         // Normalize detected pixels against selected ROI area.
-         setDetectedObjects(frameObjects);
-         const trackedObjects = objectTracker.current.update(mergeMovingObjects(frameObjects));
+        setDetectedObjects(frameObjects);
+        const trackedObjects = objectTracker.current.update(mergeMovingObjects(frameObjects));
         setMovingObjects(trackedObjects);
-        const representativeObject = trackedObjects.reduce<MotionEventObjectSnapshot | undefined>((best, object) => {
-          if (best && best.area >= object.area) return best;
-          return { bbox: object.bbox, centroid: object.centroid, area: object.area, trackId: object.id, meanIntensity: object.meanIntensity, maxIntensity: object.maxIntensity };
-        }, undefined);
-       const nextEndToEndLatency = performance.now() - frameStarted;
-       latencySamples.current.add(nextEndToEndLatency);
-         const update = tracker.current.update(videoTime, ratio, eventStartRatio, nextWasmLatency, nextEndToEndLatency, eventContinueRatio, representativeObject);
+        const representativeObject = trackedObjects.reduce<MotionEventObjectSnapshot | undefined>(
+          (best, object) => {
+            if (best && best.area >= object.area) return best;
+            return {
+              bbox: object.bbox,
+              centroid: object.centroid,
+              area: object.area,
+              trackId: object.id,
+              meanIntensity: object.meanIntensity,
+              maxIntensity: object.maxIntensity,
+            };
+          },
+          undefined,
+        );
+        const nextEndToEndLatency = performance.now() - frameStarted;
+        latencySamples.current.add(nextEndToEndLatency);
+        const update = tracker.current.update(
+          videoTime,
+          ratio,
+          eventStartRatio,
+          nextWasmLatency,
+          nextEndToEndLatency,
+          eventContinueRatio,
+          representativeObject,
+        );
 
-       // Tracker turns continuous motion into discrete timeline events.
-       if (update) setEvents((current) => update.kind === 'started'
-         ? [update.event, ...current]
-         : current.map((item) => item.id === update.event.id ? update.event : item));
+        // Tracker turns continuous motion into discrete timeline events.
+        if (update)
+          setEvents((current) =>
+            update.kind === 'started'
+              ? [update.event, ...current]
+              : current.map((item) => (item.id === update.event.id ? update.event : item)),
+          );
 
-       dashboardRef.current.motion = Math.round(ratio * 10000) / 100;
-       dashboardRef.current.wasmLatency = Math.round(nextWasmLatency * 100) / 100;
-       dashboardRef.current.endToEndLatency = Math.round(nextEndToEndLatency * 100) / 100;
-      frames++;
+        dashboardRef.current.motion = Math.round(ratio * 10000) / 100;
+        dashboardRef.current.wasmLatency = Math.round(nextWasmLatency * 100) / 100;
+        dashboardRef.current.endToEndLatency = Math.round(nextEndToEndLatency * 100) / 100;
+        frames++;
 
-      const now = performance.now();
-      // Report FPS over one-second windows to avoid noisy per-frame values.
-      if (now - last >= 1000) {
-        const windowFps = (frames * 1000) / (now - last);
-         dashboardRef.current.fps = windowFps;
-        const quality = video.getVideoPlaybackQuality?.();
-        const totalDroppedFrames = quality?.droppedVideoFrames ?? lastDroppedFrames;
-        const windowDroppedFrames = Math.max(0, totalDroppedFrames - lastDroppedFrames);
-        lastDroppedFrames = totalDroppedFrames;
-        setDroppedFrames((current) => current + windowDroppedFrames);
-        const [currentP95, currentP99] = latencySamples.current.percentiles(0.95, 0.99);
-         dashboardRef.current.p95 = currentP95;
-         dashboardRef.current.p99 = currentP99;
-         if (adaptiveEnabledRef.current && currentP95 > 0) {
-           const decision = updateAdaptiveController(adaptiveControllerRef.current, {
-             now,
-             p95Latency: currentP95,
-             fps: windowFps,
-             droppedFramesDelta: windowDroppedFrames,
-             currentResolution: effectiveResolutionRef.current,
-             requestedResolution: resolutionPresetRef.current,
-             currentFrameSamplingRate: frameSamplingRateRef.current,
-             maxFrameSamplingRate: 4,
-           }, defaultAdaptiveControllerConfig);
-           setLastAdaptiveAction(decision.action);
-           if (decision.frameSamplingRate !== frameSamplingRateRef.current) {
-             frameSamplingRateRef.current = decision.frameSamplingRate;
-             setFrameSamplingRate(decision.frameSamplingRate);
-           }
-           if (decision.resolution !== effectiveResolutionRef.current) {
-             effectiveResolutionRef.current = decision.resolution;
-             setEffectiveResolutionPreset(decision.resolution);
-             const nextSize = getProcessingSize(video.videoWidth, video.videoHeight, decision.resolution);
-            source.width = nextSize.width;
-            source.height = nextSize.height;
-            setProcessingSize(nextSize);
-            latencySamples.current.reset();
-            setP95(0);
-            setP99(0);
-            if (!motionWorkerRef.current) await resetWasm();
+        const now = performance.now();
+        // Report FPS over one-second windows to avoid noisy per-frame values.
+        if (now - last >= 1000) {
+          const windowFps = (frames * 1000) / (now - last);
+          dashboardRef.current.fps = windowFps;
+          const quality = video.getVideoPlaybackQuality?.();
+          const totalDroppedFrames = quality?.droppedVideoFrames ?? lastDroppedFrames;
+          const windowDroppedFrames = Math.max(0, totalDroppedFrames - lastDroppedFrames);
+          lastDroppedFrames = totalDroppedFrames;
+          setDroppedFrames((current) => current + windowDroppedFrames);
+          const [currentP95, currentP99] = latencySamples.current.percentiles(0.95, 0.99);
+          dashboardRef.current.p95 = currentP95;
+          dashboardRef.current.p99 = currentP99;
+          if (adaptiveEnabledRef.current && currentP95 > 0) {
+            const decision = updateAdaptiveController(
+              adaptiveControllerRef.current,
+              {
+                now,
+                p95Latency: currentP95,
+                fps: windowFps,
+                droppedFramesDelta: windowDroppedFrames,
+                currentResolution: effectiveResolutionRef.current,
+                requestedResolution: resolutionPresetRef.current,
+                currentFrameSamplingRate: frameSamplingRateRef.current,
+                maxFrameSamplingRate: 4,
+              },
+              defaultAdaptiveControllerConfig,
+            );
+            setLastAdaptiveAction(decision.action);
+            if (decision.frameSamplingRate !== frameSamplingRateRef.current) {
+              frameSamplingRateRef.current = decision.frameSamplingRate;
+              setFrameSamplingRate(decision.frameSamplingRate);
+            }
+            if (decision.resolution !== effectiveResolutionRef.current) {
+              effectiveResolutionRef.current = decision.resolution;
+              setEffectiveResolutionPreset(decision.resolution);
+              const nextSize = getProcessingSize(
+                video.videoWidth,
+                video.videoHeight,
+                decision.resolution,
+              );
+              source.width = nextSize.width;
+              source.height = nextSize.height;
+              setProcessingSize(nextSize);
+              latencySamples.current.reset();
+              setP95(0);
+              setP99(0);
+              if (!motionWorkerRef.current) await resetWasm();
+            }
           }
+          frames = 0;
+          last = now;
         }
-        frames = 0;
-        last = now;
-      }
 
         frameInFlight = false;
         scheduleNext();
       } catch (error) {
         frameInFlight = false;
-        if (runningRef.current && runId === runIdRef.current) stopAnalysis(error instanceof Error ? error.message : 'Frame processing failed');
+        if (runningRef.current && runId === runIdRef.current)
+          stopAnalysis(error instanceof Error ? error.message : 'Frame processing failed');
       }
     };
 
@@ -520,12 +666,27 @@ export function useMotionAnalysis() {
 
   function stop() {
     const update = tracker.current.finish();
-    if (update) setEvents((current) => current.map((item) => item.id === update.event.id ? update.event : item));
+    if (update)
+      setEvents((current) =>
+        current.map((item) => (item.id === update.event.id ? update.event : item)),
+      );
     stopAnalysis('Stopped');
   }
 
-  function exportEventsJson() { downloadTextFile(createEventJson(events), `motionguard-events-${Date.now()}.json`, 'application/json;charset=utf-8'); }
-  function exportEventsCsv() { downloadTextFile(createEventCsv(events), `motionguard-events-${Date.now()}.csv`, 'text/csv;charset=utf-8'); }
+  function exportEventsJson() {
+    downloadTextFile(
+      createEventJson(events),
+      `motionguard-events-${Date.now()}.json`,
+      'application/json;charset=utf-8',
+    );
+  }
+  function exportEventsCsv() {
+    downloadTextFile(
+      createEventCsv(events),
+      `motionguard-events-${Date.now()}.csv`,
+      'text/csv;charset=utf-8',
+    );
+  }
 
   return {
     videoRef,

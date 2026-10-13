@@ -7,7 +7,9 @@ export function AppHeader({ running, status }: AppHeaderProps) {
         Motion analysis <em className="not-italic text-[#4c8f36]">in browser.</em>
       </h1>
       <div className="font-mono text-xs text-[#4c8f36] max-[800px]:mt-6.25">
-        <span className={`mr-2 inline-block size-2 rounded-full ${running ? 'bg-[#8bd66d] shadow-[0_0_14px_#8bd66d]' : 'bg-[#a8b7b0]'}`} />
+        <span
+          className={`mr-2 inline-block size-2 rounded-full ${running ? 'bg-[#8bd66d] shadow-[0_0_14px_#8bd66d]' : 'bg-[#a8b7b0]'}`}
+        />
         {status}
       </div>
     </header>
