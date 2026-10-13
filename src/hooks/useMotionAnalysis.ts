@@ -12,6 +12,7 @@ import { ObjectTracker, type TrackedMovingObject } from '../features/objectTrack
 import type { MotionEventObjectSnapshot } from '../features/motionEvents';
 import { createAdaptiveControllerState, defaultAdaptiveControllerConfig, resetAdaptiveController, updateAdaptiveController } from '../features/adaptiveController';
 import type { AdaptiveControllerAction } from '../features/adaptiveController';
+import type { MotionMaskPreviewData } from '../components/MotionMaskPreview';
 
 const defaultRoi: ROI = { x: 0.2, y: 0.2, width: 0.6, height: 0.6 };
 const minThreshold = 1;
@@ -75,6 +76,9 @@ export function useMotionAnalysis() {
   const [adaptiveEnabled, setAdaptiveEnabled] = useState(false);
   const [effectiveResolutionPreset, setEffectiveResolutionPreset] = useState<ResolutionPreset>('1080p');
   const [frameSamplingRate, setFrameSamplingRate] = useState(1);
+  const [maskPreviewEnabled, setMaskPreviewEnabled] = useState(false);
+  const [maskPreview, setMaskPreview] = useState<MotionMaskPreviewData | null>(null);
+  const lastMaskPreviewAtRef = useRef(0);
   const frameSamplingRateRef = useRef(1);
   const [lastAdaptiveAction, setLastAdaptiveAction] = useState<AdaptiveControllerAction>('keep');
   const adaptiveEnabledRef = useRef(false);
@@ -94,6 +98,7 @@ export function useMotionAnalysis() {
   const [motion, setMotion] = useState(0);
   const [events, setEvents] = useState<MotionEvent[]>([]);
   const [movingObjects, setMovingObjects] = useState<TrackedMovingObject[]>([]);
+  const [detectedObjects, setDetectedObjects] = useState<MovingObject[]>([]);
   const [browserStatus, setBrowserStatus] = useState<BrowserStatus>({
     crossOriginIsolated: false,
     sharedArrayBuffer: false,
@@ -241,6 +246,7 @@ export function useMotionAnalysis() {
     tracker.current.reset();
     setEvents([]);
     setMovingObjects([]);
+    setDetectedObjects([]);
     objectTracker.current.reset();
     setProcessingSize({ width: 0, height: 0 });
     setMotion(0);
@@ -250,6 +256,7 @@ export function useMotionAnalysis() {
     setP95(0);
     setP99(0);
     setDroppedFrames(0);
+    setMaskPreview(null);
     lastAnalyzedVideoTimeRef.current = null;
     if (videoObjectUrlRef.current) {
       URL.revokeObjectURL(videoObjectUrlRef.current);
@@ -404,12 +411,14 @@ export function useMotionAnalysis() {
         let frameObjects: MovingObject[];
         if (motionWorkerRef.current) {
           const bitmap = await createImageBitmap(video);
-          const workerResult = await motionWorkerRef.current.process(bitmap, source.width, source.height, thresholdRef.current, roiRef.current, minObjectArea);
+          const includeMask = maskPreviewEnabled;
+          const workerResult = await motionWorkerRef.current.process(bitmap, source.width, source.height, thresholdRef.current, roiRef.current, minObjectArea, includeMask);
           if (workerResult.type !== 'result') throw new Error(workerResult.message ?? 'Motion worker failed.');
           nextWasmLatency = workerResult.engineMs ?? 0;
           frameObjects = (workerResult.objects ?? []).map((object) => ({ ...object, meanIntensity: 255, maxIntensity: 255 }));
           const roiPixels = Math.max(1, roiRef.current.width * roiRef.current.height * source.width * source.height);
-           ratio = (workerResult.validMotionPixelsInRoi ?? 0) / roiPixels;
+          ratio = (workerResult.validMotionPixelsInRoi ?? 0) / roiPixels;
+          if (includeMask && workerResult.maskData && workerResult.maskWidth && workerResult.maskHeight) { lastMaskPreviewAtRef.current = performance.now(); setMaskPreview({ width: workerResult.maskWidth, height: workerResult.maskHeight, data: workerResult.maskData }); }
         } else {
           ctx.drawImage(video, 0, 0, source.width, source.height);
           const image = ctx.getImageData(0, 0, source.width, source.height);
@@ -419,13 +428,20 @@ export function useMotionAnalysis() {
           const analysis = detectMovingObjects(result.mask, currentRoi, minObjectArea, objectWorkspace.current);
           frameObjects = analysis.objects;
           const roiPixels = Math.max(1, currentRoi.width * currentRoi.height * image.width * image.height);
-           ratio = analysis.validMotionPixelsInRoi / roiPixels;
+          ratio = analysis.validMotionPixelsInRoi / roiPixels;
+          if (maskPreviewEnabled) {
+            lastMaskPreviewAtRef.current = performance.now();
+            const maskData = new Uint8Array(result.mask.width * result.mask.height);
+            for (let index = 0; index < maskData.length; index += 1) maskData[index] = result.mask.data[index * 4];
+            setMaskPreview({ width: result.mask.width, height: result.mask.height, data: maskData });
+          }
         }
        if (!runningRef.current || runId !== runIdRef.current) return;
        lastAnalyzedVideoTimeRef.current = videoTime;
 
-       // Normalize detected pixels against selected ROI area.
-        const trackedObjects = objectTracker.current.update(mergeMovingObjects(frameObjects));
+        // Normalize detected pixels against selected ROI area.
+         setDetectedObjects(frameObjects);
+         const trackedObjects = objectTracker.current.update(mergeMovingObjects(frameObjects));
         setMovingObjects(trackedObjects);
         const representativeObject = trackedObjects.reduce<MotionEventObjectSnapshot | undefined>((best, object) => {
           if (best && best.area >= object.area) return best;
@@ -534,10 +550,14 @@ export function useMotionAnalysis() {
     p99,
     droppedFrames,
     frameSamplingRate,
+    maskPreviewEnabled,
+    setMaskPreviewEnabled,
+    maskPreview,
     lastAdaptiveAction,
     motion,
     events,
     movingObjects,
+    detectedObjects,
     browserStatus,
     runtimeStatus,
     activeThreads,

@@ -1,19 +1,38 @@
-import { useRef, type PointerEvent, type RefObject } from 'react';
+import { useEffect, useRef, type PointerEvent, type RefObject } from 'react';
 import { moveRoi, resizeRoi, type ROI } from '../features/roi';
 import type { TrackedMovingObject } from '../features/objectTracking';
+import type { MovingObject } from '../features/movingObjects';
+import type { MotionMaskPreviewData } from './MotionMaskPreview';
 
 type VideoStageProps = {
   media: { videoRef: RefObject<HTMLVideoElement | null>; sourceRef: RefObject<HTMLCanvasElement | null> };
-  overlay: { roi: ROI; onRoiChange: (roi: ROI) => void; movingObjects: TrackedMovingObject[] };
+  overlay: { roi: ROI; onRoiChange: (roi: ROI) => void; movingObjects: TrackedMovingObject[]; detectedObjects: MovingObject[]; maskPreview: MotionMaskPreviewData | null; maskPreviewEnabled: boolean };
 };
 
 export function VideoStage({ media, overlay }: VideoStageProps) {
   const { videoRef, sourceRef } = media;
-  const { roi, onRoiChange, movingObjects } = overlay;
+  const { roi, onRoiChange, movingObjects, detectedObjects, maskPreview, maskPreviewEnabled } = overlay;
   const stageRef = useRef<HTMLDivElement>(null);
   const roiRef = useRef(roi);
   const interactionRef = useRef<{ mode: 'move' | 'resize'; pointerId: number; x: number; y: number } | null>(null);
   roiRef.current = roi;
+  const maskCanvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = maskCanvasRef.current;
+    if (!canvas || !maskPreviewEnabled || !maskPreview) return;
+    canvas.width = maskPreview.width;
+    canvas.height = maskPreview.height;
+    const context = canvas.getContext('2d');
+    if (!context) return;
+    const pixels = new Uint8ClampedArray(maskPreview.width * maskPreview.height * 4);
+    for (let i = 0; i < maskPreview.data.length; i += 1) {
+      const value = maskPreview.data[i];
+      const offset = i * 4;
+      pixels[offset] = value; pixels[offset + 1] = value; pixels[offset + 2] = value; pixels[offset + 3] = 255;
+    }
+    context.putImageData(new ImageData(pixels, maskPreview.width, maskPreview.height), 0, 0);
+  }, [maskPreview, maskPreviewEnabled]);
 
   function beginInteraction(event: PointerEvent, mode: 'move' | 'resize') {
     event.preventDefault();
@@ -44,13 +63,14 @@ export function VideoStage({ media, overlay }: VideoStageProps) {
 
   return (
     <div ref={stageRef} className="relative grid min-w-0 w-full place-items-center overflow-hidden bg-[#edf3ef]">
-      <video ref={videoRef} className="block h-auto w-full" muted loop playsInline preload="metadata" />
-       {movingObjects.map((object) => <div key={object.id} className="pointer-events-none absolute inset-0" aria-label={`Tracked object ${object.id}`}>
-         <div
-           className="absolute border border-[#f08c3a]"
-           style={{ left: `${object.bbox.x * 100}%`, top: `${object.bbox.y * 100}%`, width: `${object.bbox.width * 100}%`, height: `${object.bbox.height * 100}%` }}
-         />
-       </div>)}
+      <video ref={videoRef} className={maskPreviewEnabled ? 'hidden' : 'block h-auto w-full'} muted loop playsInline preload="metadata" />
+      {maskPreviewEnabled && <canvas ref={maskCanvasRef} className="block h-auto w-full bg-black" aria-label="Motion mask" />}
+       {(maskPreviewEnabled ? detectedObjects : movingObjects).map((object, index) => <div key={maskPreviewEnabled ? `component-${index}` : `track-${(object as TrackedMovingObject).id}`} className="pointer-events-none absolute inset-0" aria-label={maskPreviewEnabled ? `Motion component ${index + 1}` : `Tracked object ${(object as TrackedMovingObject).id}`}>
+          <div
+            className="absolute border border-[#f08c3a]"
+            style={{ left: `${object.bbox.x * 100}%`, top: `${object.bbox.y * 100}%`, width: `${object.bbox.width * 100}%`, height: `${object.bbox.height * 100}%` }}
+          ><span className="absolute -top-4 -left-px bg-[#f08c3a] px-1 font-mono text-[9px] text-white">{maskPreviewEnabled ? `#${index + 1}` : `#${(object as TrackedMovingObject).id}`}</span><span className="absolute h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#f08c3a]" style={{ left: `${((object.centroid.x - object.bbox.x) / Math.max(object.bbox.width, 0.0001)) * 100}%`, top: `${((object.centroid.y - object.bbox.y) / Math.max(object.bbox.height, 0.0001)) * 100}%` }} /></div>
+        </div>)}
       <div 
         className="absolute cursor-move border border-dashed border-[#6ab94f] touch-none"
         style={{ left: `${roi.x * 100}%`, top: `${roi.y * 100}%`, width: `${roi.width * 100}%`, height: `${roi.height * 100}%` }}

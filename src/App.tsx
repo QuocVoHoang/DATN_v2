@@ -19,7 +19,7 @@ export default function App() {
         <div className="w-full flex-1">
           <VideoStage
              media={{ videoRef: motion.videoRef, sourceRef: motion.sourceRef }}
-            overlay={{ roi: motion.roi, onRoiChange: motion.setRoi, movingObjects: motion.movingObjects }}
+             overlay={{ roi: motion.roi, onRoiChange: motion.setRoi, movingObjects: motion.movingObjects, detectedObjects: motion.detectedObjects, maskPreview: motion.maskPreview, maskPreviewEnabled: motion.maskPreviewEnabled }}
           />
         </div>
 
@@ -33,7 +33,7 @@ export default function App() {
               stop: motion.stop
             }}
             processing={{ threshold: motion.threshold, resolutionPreset: motion.resolutionPreset, effectiveResolutionPreset: motion.effectiveResolutionPreset, adaptiveEnabled: motion.adaptiveEnabled, onThresholdChange: motion.setThreshold, onResolutionChange: motion.setResolutionPreset }}
-             adaptive={{ enabled: motion.adaptiveEnabled, onEnabledChange: motion.setAdaptiveEnabled }}
+             adaptive={{ enabled: motion.adaptiveEnabled, onEnabledChange: motion.setAdaptiveEnabled, maskPreviewEnabled: motion.maskPreviewEnabled, onMaskPreviewChange: motion.setMaskPreviewEnabled }}
           />
 
           <TelemetryPanel

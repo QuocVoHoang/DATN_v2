@@ -13,6 +13,7 @@ export type WorkerRequest = {
   threshold: number;
   roi: { x: number; y: number; width: number; height: number };
   minArea: number;
+  includeMask?: boolean;
 };
 
 export type WorkerResponse = {
@@ -25,5 +26,8 @@ export type WorkerResponse = {
   engineMs?: number;
   captureMs?: number;
   analysisMs?: number;
+  maskData?: Uint8Array;
+  maskWidth?: number;
+  maskHeight?: number;
   message?: string;
 };

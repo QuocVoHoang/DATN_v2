@@ -1,7 +1,7 @@
 import type { WorkerRequest, WorkerResponse } from '../features/motionWorkerProtocol';
 import { createMovingObjectWorkspace, detectMovingObjects } from '../features/movingObjects';
 
-type WorkerScope = { Module?: Partial<Wasm> & { onRuntimeInitialized?: () => void; onAbort?: (reason?: unknown) => void; locateFile?: (path: string) => string }; postMessage(message: WorkerResponse): void; onmessage: (event: MessageEvent<WorkerRequest>) => void };
+type WorkerScope = { Module?: Partial<Wasm> & { onRuntimeInitialized?: () => void; onAbort?: (reason?: unknown) => void; locateFile?: (path: string) => string }; postMessage(message: WorkerResponse, transfer?: Transferable[]): void; onmessage: (event: MessageEvent<WorkerRequest>) => void };
 
 type Wasm = {
   HEAPU8: Uint8Array;
@@ -61,7 +61,13 @@ scope.onmessage = async (event: MessageEvent<WorkerRequest>) => {
     const analysis = detectMovingObjects({ width: request.width, height: request.height, data: mask }, request.roi, request.minArea, objectWorkspace);
     const analysisMs = performance.now() - analysisStarted;
     const response: WorkerResponse = { type: 'result', requestId: request.requestId, objects: analysis.objects, changedPixelsInRoi: analysis.changedPixelsInRoi, validMotionPixelsInRoi: analysis.validMotionPixelsInRoi, engineMs, captureMs, analysisMs };
-    scope.postMessage(response);
+    if (request.includeMask) {
+      response.maskData = new Uint8Array(image.width * image.height);
+      for (let index = 0; index < response.maskData.length; index += 1) response.maskData[index] = mask[index * 4];
+      response.maskWidth = image.width;
+      response.maskHeight = image.height;
+      scope.postMessage(response, [response.maskData.buffer]);
+    } else scope.postMessage(response);
   } catch (error) {
     request.bitmap.close();
     scope.postMessage({ type: 'error', requestId: request.requestId, message: error instanceof Error ? error.message : String(error) } satisfies WorkerResponse);
