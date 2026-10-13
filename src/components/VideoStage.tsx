@@ -1,7 +1,6 @@
 import { useEffect, useRef, type PointerEvent, type RefObject } from 'react';
 import { moveRoi, resizeRoi, type ROI } from '../features/roi';
 import type { TrackedMovingObject } from '../features/objectTracking';
-import type { MovingObject } from '../features/movingObjects';
 import type { MotionMaskPreviewData } from './MotionMaskPreview';
 
 type VideoStageProps = {
@@ -13,7 +12,6 @@ type VideoStageProps = {
     roi: ROI;
     onRoiChange: (roi: ROI) => void;
     movingObjects: TrackedMovingObject[];
-    detectedObjects: MovingObject[];
     maskPreview: MotionMaskPreviewData | null;
     maskPreviewEnabled: boolean;
   };
@@ -21,8 +19,7 @@ type VideoStageProps = {
 
 export function VideoStage({ media, overlay }: VideoStageProps) {
   const { videoRef, sourceRef } = media;
-  const { roi, onRoiChange, movingObjects, detectedObjects, maskPreview, maskPreviewEnabled } =
-    overlay;
+  const { roi, onRoiChange, movingObjects, maskPreview, maskPreviewEnabled } = overlay;
   const stageRef = useRef<HTMLDivElement>(null);
   const roiRef = useRef(roi);
   const interactionRef = useRef<{
@@ -106,18 +103,12 @@ export function VideoStage({ media, overlay }: VideoStageProps) {
           aria-label="Motion mask"
         />
       )}
-      {(maskPreviewEnabled ? detectedObjects : movingObjects).map((object, index) => (
+      {movingObjects.map((object) => (
         <div
-          key={
-            maskPreviewEnabled
-              ? `component-${index}`
-              : `track-${(object as TrackedMovingObject).id}`
-          }
+          key={`track-${object.id}`}
           className="pointer-events-none absolute inset-0"
           aria-label={
-            maskPreviewEnabled
-              ? `Motion component ${index + 1}`
-              : `Tracked object ${(object as TrackedMovingObject).id}`
+            maskPreviewEnabled ? `Motion object ${object.id}` : `Tracked object ${object.id}`
           }
         >
           <div
@@ -130,7 +121,7 @@ export function VideoStage({ media, overlay }: VideoStageProps) {
             }}
           >
             <span className="absolute -top-4 -left-px bg-[#f08c3a] px-1 font-mono text-[9px] text-white">
-              {maskPreviewEnabled ? `#${index + 1}` : `#${(object as TrackedMovingObject).id}`}
+              #{object.id}
             </span>
             <span
               className="absolute h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#f08c3a]"

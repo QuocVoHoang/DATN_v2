@@ -109,7 +109,6 @@ export function useMotionAnalysis() {
   const [motion, setMotion] = useState(0);
   const [events, setEvents] = useState<MotionEvent[]>([]);
   const [movingObjects, setMovingObjects] = useState<TrackedMovingObject[]>([]);
-  const [detectedObjects, setDetectedObjects] = useState<MovingObject[]>([]);
   const [browserStatus, setBrowserStatus] = useState<BrowserStatus>({
     crossOriginIsolated: false,
     sharedArrayBuffer: false,
@@ -295,7 +294,6 @@ export function useMotionAnalysis() {
     tracker.current.reset();
     setEvents([]);
     setMovingObjects([]);
-    setDetectedObjects([]);
     objectTracker.current.reset();
     setProcessingSize({ width: 0, height: 0 });
     setMotion(0);
@@ -556,7 +554,6 @@ export function useMotionAnalysis() {
         lastAnalyzedVideoTimeRef.current = videoTime;
 
         // Normalize detected pixels against selected ROI area.
-        setDetectedObjects(frameObjects);
         const trackedObjects = objectTracker.current.update(mergeMovingObjects(frameObjects));
         setMovingObjects(trackedObjects);
         const representativeObject = trackedObjects.reduce<MotionEventObjectSnapshot | undefined>(
@@ -718,7 +715,6 @@ export function useMotionAnalysis() {
     motion,
     events,
     movingObjects,
-    detectedObjects,
     browserStatus,
     runtimeStatus,
     activeThreads,

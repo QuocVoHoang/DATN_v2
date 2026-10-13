@@ -20,7 +20,6 @@ export default function App() {
               roi: motion.roi,
               onRoiChange: motion.setRoi,
               movingObjects: motion.movingObjects,
-              detectedObjects: motion.detectedObjects,
               maskPreview: motion.maskPreview,
               maskPreviewEnabled: motion.maskPreviewEnabled,
             }}
