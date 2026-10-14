@@ -13,9 +13,9 @@ export function createMotionWorker() {
       width: number,
       height: number,
       threshold: number,
+      threadCount: number,
       roi: ROI,
       minArea: number,
-      includeMask = false,
     ): Promise<WorkerResponse> {
       const id = ++requestId;
       return new Promise((resolve, reject) => {
@@ -46,9 +46,9 @@ export function createMotionWorker() {
             width,
             height,
             threshold,
+            threadCount,
             roi,
             minArea,
-            includeMask,
           },
           [bitmap],
         );

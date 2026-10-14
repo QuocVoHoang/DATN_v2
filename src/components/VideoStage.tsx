@@ -1,7 +1,6 @@
-import { useEffect, useRef, type PointerEvent, type RefObject } from 'react';
+import { useRef, type PointerEvent, type RefObject } from 'react';
 import { moveRoi, resizeRoi, type ROI } from '../features/roi';
 import type { TrackedMovingObject } from '../features/objectTracking';
-import type { MotionMaskPreviewData } from './MotionMaskPreview';
 
 type VideoStageProps = {
   media: {
@@ -12,14 +11,12 @@ type VideoStageProps = {
     roi: ROI;
     onRoiChange: (roi: ROI) => void;
     movingObjects: TrackedMovingObject[];
-    maskPreview: MotionMaskPreviewData | null;
-    maskPreviewEnabled: boolean;
   };
 };
 
 export function VideoStage({ media, overlay }: VideoStageProps) {
   const { videoRef, sourceRef } = media;
-  const { roi, onRoiChange, movingObjects, maskPreview, maskPreviewEnabled } = overlay;
+  const { roi, onRoiChange, movingObjects } = overlay;
   const stageRef = useRef<HTMLDivElement>(null);
   const roiRef = useRef(roi);
   const interactionRef = useRef<{
@@ -29,26 +26,6 @@ export function VideoStage({ media, overlay }: VideoStageProps) {
     y: number;
   } | null>(null);
   roiRef.current = roi;
-  const maskCanvasRef = useRef<HTMLCanvasElement>(null);
-
-  useEffect(() => {
-    const canvas = maskCanvasRef.current;
-    if (!canvas || !maskPreviewEnabled || !maskPreview) return;
-    canvas.width = maskPreview.width;
-    canvas.height = maskPreview.height;
-    const context = canvas.getContext('2d');
-    if (!context) return;
-    const pixels = new Uint8ClampedArray(maskPreview.width * maskPreview.height * 4);
-    for (let i = 0; i < maskPreview.data.length; i += 1) {
-      const value = maskPreview.data[i];
-      const offset = i * 4;
-      pixels[offset] = value;
-      pixels[offset + 1] = value;
-      pixels[offset + 2] = value;
-      pixels[offset + 3] = 255;
-    }
-    context.putImageData(new ImageData(pixels, maskPreview.width, maskPreview.height), 0, 0);
-  }, [maskPreview, maskPreviewEnabled]);
 
   function beginInteraction(event: PointerEvent, mode: 'move' | 'resize') {
     event.preventDefault();
@@ -90,26 +67,17 @@ export function VideoStage({ media, overlay }: VideoStageProps) {
     >
       <video
         ref={videoRef}
-        className={maskPreviewEnabled ? 'hidden' : 'block h-auto w-full'}
+        className="block h-auto w-full"
         muted
         loop
         playsInline
         preload="metadata"
       />
-      {maskPreviewEnabled && (
-        <canvas
-          ref={maskCanvasRef}
-          className="block h-auto w-full bg-black"
-          aria-label="Motion mask"
-        />
-      )}
       {movingObjects.map((object) => (
         <div
           key={`track-${object.id}`}
           className="pointer-events-none absolute inset-0"
-          aria-label={
-            maskPreviewEnabled ? `Motion object ${object.id}` : `Tracked object ${object.id}`
-          }
+          aria-label={`Tracked object ${object.id}`}
         >
           <div
             className="absolute border border-[#f08c3a]"

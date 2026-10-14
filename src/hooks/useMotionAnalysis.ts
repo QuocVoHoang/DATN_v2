@@ -11,7 +11,7 @@ import {
 import { LatencySamples } from '../features/latencySamples';
 import { getProcessingSize, type ResolutionPreset } from '../features/processingResolution';
 import { createEventCsv, createEventJson, downloadTextFile } from '../features/eventExport';
-import { chooseFastestThread, threadCandidates, type ThreadMode } from '../features/autoThread';
+import type { ThreadMode } from '../features/autoThread';
 import { createMotionWorker } from '../engine/motionWorkerClient';
 import { ObjectTracker, type TrackedMovingObject } from '../features/objectTracking';
 import type { MotionEventObjectSnapshot } from '../features/motionEvents';
@@ -22,9 +22,11 @@ import {
   updateAdaptiveController,
 } from '../features/adaptiveController';
 import type { AdaptiveControllerAction } from '../features/adaptiveController';
-import type { MotionMaskPreviewData } from '../components/MotionMaskPreview';
 
 const defaultRoi: ROI = { x: 0.2, y: 0.2, width: 0.6, height: 0.6 };
+const fixedThreshold = 30;
+const defaultThreadCount = 4;
+const fixedSamplingRate = 1;
 const minThreshold = 1;
 const maxThreshold = 255;
 const maxLatencySamples = 180;
@@ -79,18 +81,15 @@ export function useMotionAnalysis() {
   const [status, setStatus] = useState('No video selected');
   const [sourceReady, setSourceReady] = useState(false);
   const [running, setRunning] = useState(false);
-  const [threshold, setThreshold] = useState(20);
+  const [threshold, setThreshold] = useState(fixedThreshold);
   const [resolutionPreset, setResolutionPreset] = useState<ResolutionPreset>('1080p');
   const resolutionPresetRef = useRef(resolutionPreset);
   const [processingSize, setProcessingSize] = useState({ width: 0, height: 0 });
   const [adaptiveEnabled, setAdaptiveEnabled] = useState(false);
   const [effectiveResolutionPreset, setEffectiveResolutionPreset] =
     useState<ResolutionPreset>('1080p');
-  const [frameSamplingRate, setFrameSamplingRate] = useState(1);
-  const [maskPreviewEnabled, setMaskPreviewEnabled] = useState(false);
-  const [maskPreview, setMaskPreview] = useState<MotionMaskPreviewData | null>(null);
-  const lastMaskPreviewAtRef = useRef(0);
-  const frameSamplingRateRef = useRef(1);
+  const [frameSamplingRate, setFrameSamplingRate] = useState(fixedSamplingRate);
+  const frameSamplingRateRef = useRef(fixedSamplingRate);
   const [lastAdaptiveAction, setLastAdaptiveAction] = useState<AdaptiveControllerAction>('keep');
   const adaptiveEnabledRef = useRef(false);
   const effectiveResolutionRef = useRef(effectiveResolutionPreset);
@@ -103,7 +102,8 @@ export function useMotionAnalysis() {
   const [p95, setP95] = useState(0);
   const [p99, setP99] = useState(0);
   const [droppedFrames, setDroppedFrames] = useState(0);
-  const [activeThreads, setActiveThreads] = useState(1);
+  const [activeThreads, setActiveThreads] = useState(defaultThreadCount);
+  const activeThreadsRef = useRef(defaultThreadCount);
   const [threadMode, setThreadModeState] = useState<ThreadMode>('manual');
   const [threadStatus, setThreadStatus] = useState('Manual');
   const [motion, setMotion] = useState(0);
@@ -168,11 +168,13 @@ export function useMotionAnalysis() {
     setThreadModeState('manual');
     setThreadStatus('Applying');
     const next = Math.max(1, Math.min(4, Math.floor(value)));
+    activeThreadsRef.current = next;
     latencySamples.current.reset();
     setP95(0);
     setP99(0);
     void configureWasmThreads(next)
       .then((actual) => {
+        activeThreadsRef.current = actual;
         setActiveThreads(actual);
         setThreadStatus('Manual');
       })
@@ -183,20 +185,14 @@ export function useMotionAnalysis() {
   }
 
   async function updateThreadMode(mode: ThreadMode) {
-    setThreadModeState(mode);
-    if (mode === 'manual') {
-      setThreadStatus('Manual');
-      return;
-    }
-    if (!sourceReady || !sourceRef.current || !videoRef.current) {
-      setThreadStatus('Auto: start analysis to calibrate');
-      return;
-    }
-    setThreadStatus('Calibrating');
+    void mode;
+    setThreadModeState('manual');
+    setThreadStatus(`Selected: ${activeThreadsRef.current} pthreads`);
   }
 
   function updateThreshold(value: number) {
-    const nextThreshold = clampThreshold(value);
+    void value;
+    const nextThreshold = fixedThreshold;
     thresholdRef.current = nextThreshold;
     setThreshold(nextThreshold);
   }
@@ -217,8 +213,8 @@ export function useMotionAnalysis() {
     setAdaptiveEnabled(enabled);
     resetAdaptiveController(adaptiveControllerRef.current);
     setLastAdaptiveAction('keep');
-    frameSamplingRateRef.current = 1;
-    setFrameSamplingRate(1);
+    frameSamplingRateRef.current = fixedSamplingRate;
+    setFrameSamplingRate(fixedSamplingRate);
     if (!enabled) {
       effectiveResolutionRef.current = resolutionPresetRef.current;
       setEffectiveResolutionPreset(resolutionPresetRef.current);
@@ -303,7 +299,6 @@ export function useMotionAnalysis() {
     setP95(0);
     setP99(0);
     setDroppedFrames(0);
-    setMaskPreview(null);
     lastAnalyzedVideoTimeRef.current = null;
     if (videoObjectUrlRef.current) {
       URL.revokeObjectURL(videoObjectUrlRef.current);
@@ -389,8 +384,8 @@ export function useMotionAnalysis() {
     );
     resetAdaptiveController(adaptiveControllerRef.current);
     setLastAdaptiveAction('keep');
-    frameSamplingRateRef.current = 1;
-    setFrameSamplingRate(1);
+    frameSamplingRateRef.current = fixedSamplingRate;
+    setFrameSamplingRate(fixedSamplingRate);
     effectiveResolutionRef.current = resolutionPresetRef.current;
     setEffectiveResolutionPreset(resolutionPresetRef.current);
     source.width = size.width;
@@ -400,40 +395,24 @@ export function useMotionAnalysis() {
 
     if (workerSupported) motionWorkerRef.current = createMotionWorker();
 
-    if (threadMode === 'auto' && !workerSupported) {
-      ctx.drawImage(video, 0, 0, source.width, source.height);
-      const calibrationImage = ctx.getImageData(0, 0, source.width, source.height);
-      const results: Array<{ threads: number; latency: number }> = [];
-      for (const candidate of threadCandidates) {
-        await configureWasmThreads(candidate);
-        await resetWasm();
-        const started = performance.now();
-        await processWithWasm(calibrationImage, thresholdRef.current);
-        results.push({
-          threads: candidate,
-          latency: performance.now() - started,
-        });
-      }
-      const selected = chooseFastestThread(results);
-      await configureWasmThreads(selected);
-      setActiveThreads(selected);
-      await resetWasm();
-      setThreadStatus(`Auto: ${selected} thread${selected === 1 ? '' : 's'}`);
-    } else if (threadMode === 'auto' && workerSupported) {
-      setActiveThreads(1);
-      setThreadStatus('Worker: 1 thread');
+    if (!workerSupported) {
+      const actual = await configureWasmThreads(activeThreadsRef.current);
+      activeThreadsRef.current = actual;
+      setActiveThreads(actual);
+      setThreadStatus(`Selected: ${actual} pthreads`);
     }
+    if (workerSupported) setThreadStatus(`Selected: ${activeThreadsRef.current} pthreads`);
 
     let last = performance.now();
     let frames = 0;
     let lastDroppedFrames = 0;
-    let decodedFrames = 0;
     latencySamples.current.reset();
     lastAnalyzedVideoTimeRef.current = null;
     setP95(0);
     setP99(0);
 
     let frameInFlight = false;
+    let decodedFrames = 0;
     const scheduleNext = () => {
       if (!runningRef.current || runId !== runIdRef.current) return;
       const videoWithCallback = video as HTMLVideoElement & {
@@ -457,13 +436,11 @@ export function useMotionAnalysis() {
       if (frameInFlight) return;
       frameInFlight = true;
       decodedFrames += 1;
-      const samplingRate = frameSamplingRateRef.current;
-      if (samplingRate > 1 && decodedFrames % samplingRate !== 0) {
+      if (fixedSamplingRate > 1 && decodedFrames % fixedSamplingRate !== 0) {
         frameInFlight = false;
         scheduleNext();
         return;
       }
-
       // Hidden source canvas provides pixels; output canvas displays processed data.
       try {
         // requestAnimationFrame is a fallback scheduler; avoid processing the same
@@ -484,18 +461,21 @@ export function useMotionAnalysis() {
         let frameObjects: MovingObject[];
         if (motionWorkerRef.current) {
           const bitmap = await createImageBitmap(video);
-          const includeMask = maskPreviewEnabled;
-          const workerResult = await motionWorkerRef.current.process(
-            bitmap,
-            source.width,
-            source.height,
-            thresholdRef.current,
-            roiRef.current,
+           const workerResult = await motionWorkerRef.current.process(
+             bitmap,
+             source.width,
+             source.height,
+             thresholdRef.current,
+             activeThreadsRef.current,
+             roiRef.current,
             minObjectArea,
-            includeMask,
           );
-          if (workerResult.type !== 'result')
-            throw new Error(workerResult.message ?? 'Motion worker failed.');
+           if (workerResult.type !== 'result')
+             throw new Error(workerResult.message ?? 'Motion worker failed.');
+           if (workerResult.activeThreads) {
+             activeThreadsRef.current = workerResult.activeThreads;
+             setActiveThreads(workerResult.activeThreads);
+           }
           nextWasmLatency = workerResult.engineMs ?? 0;
           frameObjects = (workerResult.objects ?? []).map((object) => ({
             ...object,
@@ -507,19 +487,6 @@ export function useMotionAnalysis() {
             roiRef.current.width * roiRef.current.height * source.width * source.height,
           );
           ratio = (workerResult.validMotionPixelsInRoi ?? 0) / roiPixels;
-          if (
-            includeMask &&
-            workerResult.maskData &&
-            workerResult.maskWidth &&
-            workerResult.maskHeight
-          ) {
-            lastMaskPreviewAtRef.current = performance.now();
-            setMaskPreview({
-              width: workerResult.maskWidth,
-              height: workerResult.maskHeight,
-              data: workerResult.maskData,
-            });
-          }
         } else {
           ctx.drawImage(video, 0, 0, source.width, source.height);
           const image = ctx.getImageData(0, 0, source.width, source.height);
@@ -538,17 +505,6 @@ export function useMotionAnalysis() {
             currentRoi.width * currentRoi.height * image.width * image.height,
           );
           ratio = analysis.validMotionPixelsInRoi / roiPixels;
-          if (maskPreviewEnabled) {
-            lastMaskPreviewAtRef.current = performance.now();
-            const maskData = new Uint8Array(result.mask.width * result.mask.height);
-            for (let index = 0; index < maskData.length; index += 1)
-              maskData[index] = result.mask.data[index * 4];
-            setMaskPreview({
-              width: result.mask.width,
-              height: result.mask.height,
-              data: maskData,
-            });
-          }
         }
         if (!runningRef.current || runId !== runIdRef.current) return;
         lastAnalyzedVideoTimeRef.current = videoTime;
@@ -614,20 +570,16 @@ export function useMotionAnalysis() {
               {
                 now,
                 p95Latency: currentP95,
-                fps: windowFps,
-                droppedFramesDelta: windowDroppedFrames,
                 currentResolution: effectiveResolutionRef.current,
                 requestedResolution: resolutionPresetRef.current,
-                currentFrameSamplingRate: frameSamplingRateRef.current,
-                maxFrameSamplingRate: 4,
               },
               defaultAdaptiveControllerConfig,
             );
             setLastAdaptiveAction(decision.action);
-            if (decision.frameSamplingRate !== frameSamplingRateRef.current) {
-              frameSamplingRateRef.current = decision.frameSamplingRate;
-              setFrameSamplingRate(decision.frameSamplingRate);
-            }
+            // Adaptive mode follows the original implementation: it changes
+            // processing resolution only and never drops decoded frames.
+            frameSamplingRateRef.current = fixedSamplingRate;
+            setFrameSamplingRate(fixedSamplingRate);
             if (decision.resolution !== effectiveResolutionRef.current) {
               effectiveResolutionRef.current = decision.resolution;
               setEffectiveResolutionPreset(decision.resolution);
@@ -708,9 +660,6 @@ export function useMotionAnalysis() {
     p99,
     droppedFrames,
     frameSamplingRate,
-    maskPreviewEnabled,
-    setMaskPreviewEnabled,
-    maskPreview,
     lastAdaptiveAction,
     motion,
     events,

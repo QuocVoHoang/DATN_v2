@@ -20,8 +20,6 @@ export default function App() {
               roi: motion.roi,
               onRoiChange: motion.setRoi,
               movingObjects: motion.movingObjects,
-              maskPreview: motion.maskPreview,
-              maskPreviewEnabled: motion.maskPreviewEnabled,
             }}
           />
         </div>
@@ -46,8 +44,6 @@ export default function App() {
             adaptive={{
               enabled: motion.adaptiveEnabled,
               onEnabledChange: motion.setAdaptiveEnabled,
-              maskPreviewEnabled: motion.maskPreviewEnabled,
-              onMaskPreviewChange: motion.setMaskPreviewEnabled,
             }}
           />
 

@@ -69,26 +69,26 @@ export function TelemetryPanel({
       </div>
       <div className="grid grid-cols-2 gap-x-10 max-[600px]:grid-cols-2 max-[400px]:grid-cols-1">
         <Metric label="FPS" value={fps.toFixed(1)} unit="fps" />
-        <Metric label="Motion in ROI" value={motion.toFixed(2)} unit="%" />
+        {/* <Metric label="Motion in ROI" value={motion.toFixed(2)} unit="%" /> */}
+        <Metric label="Frame sampling" value={`1/${frameSamplingRate}`} unit="" />
         <Metric label="WASM latency" value={wasmLatency.toFixed(2)} unit="ms" />
         <Metric label="End-to-end latency" value={endToEndLatency.toFixed(2)} unit="ms" />
         <Metric label="P95 latency" value={p95.toFixed(2)} unit="ms" />
         <Metric label="P99 latency" value={p99.toFixed(2)} unit="ms" />
         <Metric label="Dropped frames" value={droppedFrames.toString()} unit="frames" />
-        <Metric label="Budget status" value={budgetStatus} unit="" />
-        <Metric
+        {/* <Metric label="Budget status" value={budgetStatus} unit="" /> */}
+        {/* <Metric
           label="Processing size"
           value={processingSize.width ? `${processingSize.width}x${processingSize.height}` : '-'}
           unit="px"
-        />
-        <Metric label="Adaptive quality" value={adaptiveEnabled ? 'ON' : 'OFF'} unit="" />
-        <Metric label="Effective resolution" value={effectiveResolutionPreset} unit="" />
-        <Metric label="Frame sampling" value={`1/${frameSamplingRate}`} unit="" />
-        <Metric
+        /> */}
+        {/* <Metric label="Adaptive quality" value={adaptiveEnabled ? 'ON' : 'OFF'} unit="" /> */}
+        {/* <Metric label="Effective resolution" value={effectiveResolutionPreset} unit="" /> */}
+        {/* <Metric
           label="Last adaptive action"
           value={formatAdaptiveAction(lastAdaptiveAction)}
           unit=""
-        />
+        /> */}
       </div>
       <div className="mt-5 border-t border-[#d7e1dc] pt-4">
         <div className="mb-2 font-mono text-[11px] tracking-[0.14em] text-[#587168]">
@@ -101,26 +101,6 @@ export function TelemetryPanel({
             enabled={runtimeStatus.wasmEngine === 'active'}
           />
           <Status
-            label="Canvas 2D capture"
-            value={runtimeStatus.canvasCapture}
-            enabled={runtimeStatus.canvasCapture === 'active'}
-          />
-          <Status
-            label="Canvas 2D render"
-            value={runtimeStatus.canvasRender}
-            enabled={runtimeStatus.canvasRender === 'active'}
-          />
-          <Status
-            label="ROI filtering"
-            value={runtimeStatus.roiFiltering}
-            enabled={runtimeStatus.roiFiltering === 'active'}
-          />
-          <Status
-            label="Camera input"
-            value={runtimeStatus.cameraInput}
-            enabled={runtimeStatus.cameraInput === 'active'}
-          />
-          <Status
             label="OffscreenCanvas worker"
             value={runtimeStatus.offscreenCanvasWorker}
             enabled={runtimeStatus.offscreenCanvasWorker === 'active'}
@@ -131,7 +111,7 @@ export function TelemetryPanel({
             enabled={runtimeStatus.pthreads === 'available'}
           />
           <div className="flex items-center justify-between gap-2 text-[12px] text-[#60736c]">
-            <span>Active threads</span>
+            <span>Active pthreads</span>
             <select
               className="border border-[#bdccc5] bg-white px-1.5 py-1 text-[#18231f]"
               value={threadMode === 'auto' ? 'auto' : runtimeStatus.activeThreads}
@@ -162,7 +142,6 @@ export function TelemetryPanel({
           <Status label="COOP/COEP isolated" enabled={browserStatus.crossOriginIsolated} />
           <Status label="SharedArrayBuffer" enabled={browserStatus.sharedArrayBuffer} />
           <Status label="WebAssembly" enabled={browserStatus.webAssembly} />
-          <Status label="Camera API" enabled={browserStatus.camera} />
           <Status label="OffscreenCanvas" enabled={browserStatus.offscreenCanvas} />
         </div>
       </div>

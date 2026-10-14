@@ -8,12 +8,8 @@ import {
 const base = {
   now: 0,
   p95Latency: 40,
-  fps: 30,
-  droppedFramesDelta: 0,
   currentResolution: '1080p' as const,
   requestedResolution: '1080p' as const,
-  currentFrameSamplingRate: 1,
-  maxFrameSamplingRate: 4,
 };
 
 describe('adaptive controller', () => {
@@ -69,7 +65,7 @@ describe('adaptive controller', () => {
     expect(result.resolution).toBe('1080p');
   });
 
-  it('increases sampling at the minimum resolution during overload', () => {
+  it('keeps full frame processing at the minimum resolution during overload', () => {
     const state = createAdaptiveControllerState();
     const input = {
       ...base,
@@ -78,28 +74,31 @@ describe('adaptive controller', () => {
     };
     updateAdaptiveController(state, input);
     const result = updateAdaptiveController(state, { ...input, now: 3000 });
-    expect(result).toMatchObject({
-      action: 'increase-frame-sampling',
-      frameSamplingRate: 2,
-      resolution: '360p',
-    });
+    expect(result).toMatchObject({ action: 'keep', frameSamplingRate: 1, resolution: '360p' });
   });
 
-  it('decreases sampling before upscaling when healthy', () => {
+  it('upscales resolution when healthy', () => {
     const state = createAdaptiveControllerState();
     const input = {
       ...base,
       p95Latency: 20,
       currentResolution: '720p' as const,
       requestedResolution: '1080p' as const,
-      currentFrameSamplingRate: 2,
+       currentFrameSamplingRate: 1,
     };
     for (let i = 0; i < defaultAdaptiveControllerConfig.upshiftHoldWindows - 1; i += 1)
       updateAdaptiveController(state, { ...input, now: i });
     const result = updateAdaptiveController(state, { ...input, now: 3000 });
-    expect(result).toMatchObject({
-      action: 'decrease-frame-sampling',
-      frameSamplingRate: 1,
-    });
+    expect(result).toMatchObject({ action: 'upscale-resolution', resolution: '900p', frameSamplingRate: 1 });
+  });
+
+  it('resets hold windows when latency is between thresholds', () => {
+    const state = createAdaptiveControllerState();
+    updateAdaptiveController(state, base);
+    const result = updateAdaptiveController(state, { ...base, now: 1000, p95Latency: 30 });
+    expect(result).toMatchObject({ action: 'keep', resolution: '1080p' });
+
+    const next = updateAdaptiveController(state, { ...base, now: 2000 });
+    expect(next.action).toBe('keep');
   });
 });

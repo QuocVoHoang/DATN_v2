@@ -32,9 +32,9 @@ mkdir -p "$DATN_DIR/public/wasm"
 
 echo "Build done: public/wasm/motion_wasm.js and public/wasm/motion_wasm.wasm"
 
-# Worker fallback: no pthread runtime is required inside the analysis worker.
+# Worker build uses the same pthread-enabled WASM engine.
 "$EMXX_BIN" "$SCRIPT_DIR/cpp/motion_detection.cpp" \
-  -O3 -msimd128 -s WASM=1 -s ALLOW_MEMORY_GROWTH=1 \
+  -O3 -msimd128 -pthread -s PTHREAD_POOL_SIZE=4 -s WASM=1 -s ALLOW_MEMORY_GROWTH=1 \
   -s EXPORTED_FUNCTIONS='["_malloc","_free","_processMotion","_resetMotionDetector","_getChangedPixelCount","_getLastMotionError","_setThreadCount","_getThreadCount"]' \
   -s EXPORTED_RUNTIME_METHODS='["HEAPU8"]' \
   -s MODULARIZE=1 -s EXPORT_ES6=1 \

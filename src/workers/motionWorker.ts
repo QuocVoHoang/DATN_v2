@@ -18,6 +18,8 @@ type Wasm = {
   _processMotion(pointer: number, width: number, height: number, threshold: number): number;
   _getLastMotionError(): number;
   _resetMotionDetector(): void;
+  _setThreadCount(count: number): void;
+  _getThreadCount(): number;
 };
 
 const scope = self as unknown as WorkerScope;
@@ -54,6 +56,8 @@ scope.onmessage = async (event: MessageEvent<WorkerRequest>) => {
   const request = event.data;
   const started = performance.now();
   try {
+    const wasm = await initWasm();
+    wasm._setThreadCount(Math.max(1, Math.min(4, Math.floor(request.threadCount))));
     if (!canvas || canvas.width !== request.width || canvas.height !== request.height) {
       canvas = new OffscreenCanvas(request.width, request.height);
       context = canvas.getContext('2d', { willReadFrequently: true });
@@ -63,7 +67,6 @@ scope.onmessage = async (event: MessageEvent<WorkerRequest>) => {
     request.bitmap.close();
     const image = context.getImageData(0, 0, request.width, request.height);
     const captureMs = performance.now() - started;
-    const wasm = await initWasm();
     if (image.data.length > inputCapacity) {
       const next = wasm._malloc(image.data.length);
       if (!next) throw new Error('Unable to allocate WASM input.');
@@ -99,15 +102,9 @@ scope.onmessage = async (event: MessageEvent<WorkerRequest>) => {
       engineMs,
       captureMs,
       analysisMs,
+      activeThreads: wasm._getThreadCount(),
     };
-    if (request.includeMask) {
-      response.maskData = new Uint8Array(image.width * image.height);
-      for (let index = 0; index < response.maskData.length; index += 1)
-        response.maskData[index] = mask[index * 4];
-      response.maskWidth = image.width;
-      response.maskHeight = image.height;
-      scope.postMessage(response, [response.maskData.buffer]);
-    } else scope.postMessage(response);
+    scope.postMessage(response);
   } catch (error) {
     request.bitmap.close();
     scope.postMessage({
