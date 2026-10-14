@@ -23,14 +23,31 @@ type ToolbarProps = {
     enabled: boolean;
     onEnabledChange: (value: boolean) => void;
   };
+  worker: {
+    enabled: boolean;
+    supported: boolean;
+    running: boolean;
+    onEnabledChange: (value: boolean) => void;
+  };
 };
 
-export function Toolbar({ source, processing, adaptive }: ToolbarProps) {
+export function Toolbar({ source, processing, adaptive, worker }: ToolbarProps) {
   return (
     <section className="flex flex-wrap items-center gap-3 py-5">
       <SourceControls {...source} />
       <ProcessingControls running={source.running} {...processing} />
       <AdaptiveControls {...adaptive} />
+      <label className="font-mono text-xs text-[#60736c]">
+        <input
+          type="checkbox"
+          className="mr-2"
+          checked={worker.enabled}
+          disabled={worker.running || !worker.supported}
+          onChange={(event) => worker.onEnabledChange(event.target.checked)}
+        />
+        Web Worker + OffscreenCanvas
+        {!worker.supported && ' (unavailable)'}
+      </label>
     </section>
   );
 }

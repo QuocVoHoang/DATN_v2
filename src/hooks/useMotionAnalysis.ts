@@ -86,6 +86,8 @@ export function useMotionAnalysis() {
   const resolutionPresetRef = useRef(resolutionPreset);
   const [processingSize, setProcessingSize] = useState({ width: 0, height: 0 });
   const [adaptiveEnabled, setAdaptiveEnabled] = useState(false);
+  const [workerEnabled, setWorkerEnabledState] = useState(true);
+  const workerEnabledRef = useRef(true);
   const [effectiveResolutionPreset, setEffectiveResolutionPreset] =
     useState<ResolutionPreset>('1080p');
   const [frameSamplingRate, setFrameSamplingRate] = useState(fixedSamplingRate);
@@ -238,6 +240,12 @@ export function useMotionAnalysis() {
     }
   }
 
+  function updateWorkerEnabled(enabled: boolean) {
+    if (runningRef.current) return;
+    workerEnabledRef.current = enabled;
+    setWorkerEnabledState(enabled);
+  }
+
   useEffect(
     () => () => {
       stopAnalysis();
@@ -352,11 +360,12 @@ export function useMotionAnalysis() {
       typeof Worker !== 'undefined' &&
       typeof OffscreenCanvas !== 'undefined' &&
       typeof createImageBitmap === 'function';
+    const useWorker = workerEnabledRef.current && workerSupported;
 
     // Stop can pause the video, so every new analysis run must resume playback.
     try {
       setStatus('Preparing motion engine');
-      if (!workerSupported) await resetWasm();
+       if (!useWorker) await resetWasm();
       if (runId !== runIdRef.current) return;
       await video.play();
     } catch {
@@ -393,15 +402,15 @@ export function useMotionAnalysis() {
     setProcessingSize(size);
     setStatus('Analyzing');
 
-    if (workerSupported) motionWorkerRef.current = createMotionWorker();
+    if (useWorker) motionWorkerRef.current = createMotionWorker();
 
-    if (!workerSupported) {
+    if (!useWorker) {
       const actual = await configureWasmThreads(activeThreadsRef.current);
       activeThreadsRef.current = actual;
       setActiveThreads(actual);
       setThreadStatus(`Selected: ${actual} pthreads`);
     }
-    if (workerSupported) setThreadStatus(`Selected: ${activeThreadsRef.current} pthreads`);
+    if (useWorker) setThreadStatus(`Selected: ${activeThreadsRef.current} pthreads (worker)`);
 
     let last = performance.now();
     let frames = 0;
@@ -459,7 +468,7 @@ export function useMotionAnalysis() {
         let nextWasmLatency: number;
         let ratio: number;
         let frameObjects: MovingObject[];
-        if (motionWorkerRef.current) {
+        if (useWorker && motionWorkerRef.current) {
           const bitmap = await createImageBitmap(video);
            const workerResult = await motionWorkerRef.current.process(
              bitmap,
@@ -669,6 +678,12 @@ export function useMotionAnalysis() {
     activeThreads,
     threadMode,
     threadStatus,
+    workerEnabled,
+    workerSupported:
+      typeof Worker !== 'undefined' &&
+      typeof OffscreenCanvas !== 'undefined' &&
+      typeof createImageBitmap === 'function',
+    setWorkerEnabled: updateWorkerEnabled,
     setThreadMode: updateThreadMode,
     setThreadCount: updateThreadCount,
     selectVideo,

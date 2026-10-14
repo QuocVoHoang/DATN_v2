@@ -45,6 +45,12 @@ export default function App() {
               enabled: motion.adaptiveEnabled,
               onEnabledChange: motion.setAdaptiveEnabled,
             }}
+            worker={{
+              enabled: motion.workerEnabled,
+              supported: motion.workerSupported,
+              running: motion.running,
+              onEnabledChange: motion.setWorkerEnabled,
+            }}
           />
 
           <TelemetryPanel

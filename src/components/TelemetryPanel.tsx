@@ -75,7 +75,7 @@ export function TelemetryPanel({
         <Metric label="End-to-end latency" value={endToEndLatency.toFixed(2)} unit="ms" />
         <Metric label="P95 latency" value={p95.toFixed(2)} unit="ms" />
         <Metric label="P99 latency" value={p99.toFixed(2)} unit="ms" />
-        <Metric label="Dropped frames" value={droppedFrames.toString()} unit="frames" />
+        {/* <Metric label="Dropped frames" value={droppedFrames.toString()} unit="frames" /> */}
         {/* <Metric label="Budget status" value={budgetStatus} unit="" /> */}
         {/* <Metric
           label="Processing size"
